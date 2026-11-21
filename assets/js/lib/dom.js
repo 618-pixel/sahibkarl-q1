@@ -1,12 +1,7 @@
-/* ============================================================================
-   RahatHesab — DOM köməkçiləri (modal, toast, ikon, forma, clipboard)
-   ========================================================================== */
-
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
-/** SVG sprite ikonu */
-export function icon(name, size = 20, cls = '') {
+export function icon(name, size = 18, cls = '') {
   return `<svg viewBox="0 0 24 24" width="${size}" height="${size}"${cls ? ` class="${cls}"` : ''} aria-hidden="true" focusable="false"><use href="#${name}"></use></svg>`;
 }
 
@@ -19,9 +14,14 @@ export function escapeHtml(value) {
     .replace(/'/g, '&#039;');
 }
 
-/* ------------------------------ TOAST ----------------------------------- */
+export function initialsOf(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 1).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
 
-export function toast(message, type = 'ok', timeout = 4200) {
+export function toast(message, type = 'ok', timeout = 4000) {
   const root = $('#toast-root');
   if (!root) return () => {};
 
@@ -36,50 +36,49 @@ export function toast(message, type = 'ok', timeout = 4200) {
   node.className = `toast ${cfg.cls}`;
   node.setAttribute('role', type === 'error' ? 'alert' : 'status');
   node.innerHTML = `
-    <span class="toast__icon">${icon(cfg.icon, 18)}</span>
+    <span class="toast__icon">${icon(cfg.icon, 16)}</span>
     <span class="toast__text">${escapeHtml(message)}</span>
-    <button class="toast__close" type="button" aria-label="Bağla">${icon('i-close', 15)}</button>
+    <button class="toast__close" type="button" aria-label="Bağla">${icon('i-close', 13)}</button>
   `;
 
   const remove = () => {
     if (!node.isConnected) return;
     node.classList.add('is-out');
-    setTimeout(() => node.remove(), 220);
+    setTimeout(() => node.remove(), 200);
   };
 
   node.querySelector('.toast__close').addEventListener('click', remove);
   root.appendChild(node);
 
-  while (root.children.length > 4) root.firstElementChild.remove();
+  while (root.children.length > 3) root.firstElementChild.remove();
   if (timeout > 0) setTimeout(remove, timeout);
   return remove;
 }
 
-/* ------------------------------ MODAL ----------------------------------- */
-
 let activeModal = null;
 let lastFocused = null;
+let modalRootBound = false;
 
 export function openModal({ title, subtitle = '', body = '', footer = '', wide = false, onMount, onClose, closable = true }) {
   const root = $('#modal-root');
   if (!root) return null;
 
-  closeModal(true);
+  if (activeModal) closeModal(true);
   lastFocused = document.activeElement;
 
   const wrap = document.createElement('div');
   wrap.className = 'modal' + (wide ? ' modal--wide' : '');
   wrap.setAttribute('role', 'dialog');
   wrap.setAttribute('aria-modal', 'true');
-  wrap.setAttribute('aria-labelledby', 'modal-title');
+  wrap.setAttribute('aria-label', title);
 
   wrap.innerHTML = `
     <div class="modal__head">
       <div>
-        <h2 id="modal-title">${escapeHtml(title)}</h2>
+        <h2>${escapeHtml(title)}</h2>
         ${subtitle ? `<p>${escapeHtml(subtitle)}</p>` : ''}
       </div>
-      ${closable ? `<button class="iconbtn iconbtn--sm" type="button" data-modal-close aria-label="Bağla">${icon('i-close', 17)}</button>` : ''}
+      ${closable ? `<button class="iconbtn iconbtn--sm" type="button" data-modal-close aria-label="Bağla">${icon('i-close', 16)}</button>` : ''}
     </div>
     <div class="modal__body">${body}</div>
     ${footer ? `<div class="modal__foot">${footer}</div>` : ''}
@@ -94,36 +93,36 @@ export function openModal({ title, subtitle = '', body = '', footer = '', wide =
     if (e.key === 'Escape' && closable) {
       e.preventDefault();
       closeModal();
+      return;
     }
     if (e.key === 'Tab') trapFocus(e, wrap);
   };
   document.addEventListener('keydown', onKey);
 
-  const onBackdrop = (e) => {
-    if (e.target === root && activeModal && activeModal.closable) closeModal();
-  };
+  if (!modalRootBound) {
+    root.addEventListener('mousedown', (e) => {
+      if (e.target === root && activeModal && activeModal.closable) closeModal();
+    });
+    modalRootBound = true;
+  }
 
-  const onCloseClick = (e) => {
-    const btn = e.target.closest('[data-modal-close]');
-    if (btn && activeModal && activeModal.closable) closeModal();
-  };
-
-  wrap.addEventListener('click', onCloseClick);
-  bindModalRoot(onBackdrop);
+  wrap.addEventListener('click', (e) => {
+    if (e.target.closest('[data-modal-close]') && activeModal && activeModal.closable) closeModal();
+  });
 
   activeModal = { wrap, onKey, onClose: onClose || null, closable };
 
   if (typeof onMount === 'function') onMount(wrap);
 
-  const first = wrap.querySelector('input, select, textarea, button:not([data-modal-close])');
-  if (first) setTimeout(() => first.focus({ preventScroll: true }), 40);
+  const first = wrap.querySelector('input:not([type="checkbox"]), select, textarea');
+  if (first) setTimeout(() => first.focus({ preventScroll: true }), 30);
 
   return wrap;
 }
 
 export function closeModal(silent = false) {
   const root = $('#modal-root');
-  if (!root || root.hidden) return;
+  if (!root) return;
 
   if (activeModal) {
     document.removeEventListener('keydown', activeModal.onKey);
@@ -139,15 +138,6 @@ export function closeModal(silent = false) {
     lastFocused.focus({ preventScroll: true });
     lastFocused = null;
   }
-}
-
-let modalRootBound = false;
-
-function bindModalRoot(handler) {
-  const root = $('#modal-root');
-  if (!root || modalRootBound) return;
-  root.addEventListener('mousedown', handler);
-  modalRootBound = true;
 }
 
 function trapFocus(e, container) {
@@ -168,8 +158,6 @@ function trapFocus(e, container) {
   }
 }
 
-/* --------------------------- CONFIRM DIALOG ------------------------------ */
-
 export function confirmDialog({ title, message, confirmText = 'Təsdiqlə', cancelText = 'Ləğv et', danger = false }) {
   return new Promise((resolve) => {
     let settled = false;
@@ -181,7 +169,7 @@ export function confirmDialog({ title, message, confirmText = 'Təsdiqlə', canc
 
     openModal({
       title,
-      body: `<p style="font-size:13.5px;line-height:1.65;color:var(--ink-2)">${escapeHtml(message)}</p>`,
+      body: `<p style="font-size:13px;line-height:1.6;color:var(--ink-2)">${escapeHtml(message)}</p>`,
       footer: `
         <button class="btn btn--ghost" type="button" data-cancel>${escapeHtml(cancelText)}</button>
         <button class="btn ${danger ? 'btn--danger' : 'btn--primary'}" type="button" data-confirm>${escapeHtml(confirmText)}</button>
@@ -201,8 +189,6 @@ export function confirmDialog({ title, message, confirmText = 'Təsdiqlə', canc
   });
 }
 
-/* ------------------------------ FORM HELPERS ----------------------------- */
-
 export function setLoading(button, loading) {
   if (!button) return;
   button.classList.toggle('is-loading', !!loading);
@@ -220,13 +206,13 @@ export function showError(container, message) {
   container.hidden = false;
 }
 
-export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
 
 export function isEmail(value) {
   return EMAIL_RE.test(String(value || '').trim());
 }
 
-export function debounce(fn, wait = 220) {
+export function debounce(fn, wait = 200) {
   let t = null;
   return (...args) => {
     clearTimeout(t);
@@ -234,18 +220,16 @@ export function debounce(fn, wait = 220) {
   };
 }
 
-export function emptyState({ title, message, iconName = 'i-empty-box', action = '' }) {
+export function emptyState({ title, message, iconName = 'i-file', action = '' }) {
   return `
     <div class="empty">
-      <div class="empty__icon">${icon(iconName, 24)}</div>
+      <div class="empty__icon">${icon(iconName, 22)}</div>
       <h3>${escapeHtml(title)}</h3>
       <p>${escapeHtml(message)}</p>
       ${action}
     </div>
   `;
 }
-
-/* ------------------------------ CLIPBOARD -------------------------------- */
 
 export async function copyText(text) {
   const value = String(text || '');
@@ -254,8 +238,8 @@ export async function copyText(text) {
       await navigator.clipboard.writeText(value);
       return true;
     }
-  } catch (_) {
-    /* fallback aşağıda */
+  } catch {
+    /* clipboard API bağlıdır */
   }
   try {
     const ta = document.createElement('textarea');
@@ -269,12 +253,10 @@ export async function copyText(text) {
     const ok = document.execCommand('copy');
     document.body.removeChild(ta);
     return ok;
-  } catch (_) {
+  } catch {
     return false;
   }
 }
-
-/* ------------------------------ FILE HELPERS ----------------------------- */
 
 export function downloadFile(filename, content, mime = 'text/plain;charset=utf-8') {
   const blob = content instanceof Blob ? content : new Blob([content], { type: mime });
@@ -286,39 +268,4 @@ export function downloadFile(filename, content, mime = 'text/plain;charset=utf-8
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1500);
-}
-
-/** Fayl seçdirib mətnini qaytarır (CSV import üçün) */
-export function pickFile(accept = '.csv,text/csv') {
-  return new Promise((resolve) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = accept;
-    input.style.display = 'none';
-    document.body.appendChild(input);
-    input.addEventListener('change', async () => {
-      const file = input.files && input.files[0];
-      if (!file) {
-        input.remove();
-        resolve(null);
-        return;
-      }
-      try {
-        const text = await file.text();
-        input.remove();
-        resolve({ name: file.name, text });
-      } catch (_) {
-        input.remove();
-        resolve(null);
-      }
-    });
-    input.click();
-  });
-}
-
-export function initialsOf(name) {
-  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 1).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }

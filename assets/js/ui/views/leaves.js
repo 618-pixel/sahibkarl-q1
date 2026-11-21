@@ -1,12 +1,6 @@
-/* ============================================================================
-   RahatHesab — Məzuniyyət / istəklər
-   ========================================================================== */
-
-import { icon, emptyState, escapeHtml } from '../../lib/dom.js';
-import { dateShort, daysBetween, LEAVE_LABELS, LEAVE_STATUS, pluralAz, initials } from '../../lib/format.js';
-import {
-  openLeaveForm, confirmDecideLeave, confirmDeleteLeave
-} from '../forms.js';
+import { icon, emptyState, escapeHtml, initialsOf } from '../../lib/dom.js';
+import { dateShort, daysBetween, LEAVE_LABELS, LEAVE_STATUS, pluralAz } from '../../lib/format.js';
+import { openLeaveForm, confirmDecideLeave, confirmDeleteLeave } from '../forms.js';
 
 export default function renderLeaves(root, ctx) {
   const { role, leaves, employees, employee } = ctx;
@@ -15,28 +9,27 @@ export default function renderLeaves(root, ctx) {
   const pending = leaves.filter((l) => l.status === 'pending');
   const approved = leaves.filter((l) => l.status === 'approved');
   const rejected = leaves.filter((l) => l.status === 'rejected');
-
   const approvedDays = approved.reduce((s, l) => s + daysBetween(l.start_date, l.end_date), 0);
 
   root.innerHTML = `
-    <div class="grid grid--stats" style="margin-bottom:14px">
+    <div class="grid grid--stats" style="margin-bottom:12px">
       <article class="stat stat--brand">
-        <div class="stat__top"><span class="stat__label">Təsdiqlənmiş</span><span class="stat__icon">${icon('i-check-circle', 16)}</span></div>
+        <div class="stat__top"><span class="stat__label">Təsdiqlənmiş</span><span class="stat__icon">${icon('i-check-circle', 14)}</span></div>
         <div class="stat__value">${approved.length}</div>
         <div class="stat__hint">${approvedDays} gün cəmi</div>
       </article>
       <article class="stat ${pending.length ? 'stat--danger' : ''}">
-        <div class="stat__top"><span class="stat__label">Cavab gözləyir</span><span class="stat__icon stat__icon--warn">${icon('i-clock', 16)}</span></div>
+        <div class="stat__top"><span class="stat__label">Cavab gözləyir</span><span class="stat__icon stat__icon--warn">${icon('i-clock', 14)}</span></div>
         <div class="stat__value">${pending.length}</div>
         <div class="stat__hint">${pending.length ? 'Qərar verilməlidir' : 'Hamısı həll olunub'}</div>
       </article>
       <article class="stat">
-        <div class="stat__top"><span class="stat__label">Rədd edilmiş</span><span class="stat__icon stat__icon--danger">${icon('i-minus', 16)}</span></div>
+        <div class="stat__top"><span class="stat__label">Rədd edilmiş</span><span class="stat__icon stat__icon--danger">${icon('i-minus', 14)}</span></div>
         <div class="stat__value">${rejected.length}</div>
         <div class="stat__hint">Rədd edilən istəklər</div>
       </article>
       <article class="stat">
-        <div class="stat__top"><span class="stat__label">Ümumi istək</span><span class="stat__icon stat__icon--info">${icon('i-calendar', 16)}</span></div>
+        <div class="stat__top"><span class="stat__label">Ümumi istək</span><span class="stat__icon stat__icon--info">${icon('i-calendar', 14)}</span></div>
         <div class="stat__value">${leaves.length}</div>
         <div class="stat__hint">Bütün tarixçə</div>
       </article>
@@ -46,12 +39,12 @@ export default function renderLeaves(root, ctx) {
       <span class="toolbar__count">${pluralAz(leaves.length, 'istək', 'istək')}</span>
       <span class="spacer"></span>
       <button class="btn btn--primary btn--sm" type="button" id="lv-add">
-        ${icon('i-plus', 16)} ${isOwner ? 'İstək əlavə et' : 'Məzuniyyət istə'}
+        ${icon('i-plus', 14)} ${isOwner ? 'İstək əlavə et' : 'Məzuniyyət istə'}
       </button>
     </div>
 
     ${pending.length && isOwner ? `
-      <section class="card" style="margin-bottom:14px;border-color:color-mix(in srgb, var(--warn) 40%, var(--line))">
+      <section class="card" style="margin-bottom:12px">
         <div class="card__head">
           <div>
             <h3 class="card__title">Qərar gözləyən istəklər</h3>
@@ -62,7 +55,7 @@ export default function renderLeaves(root, ctx) {
           <div class="list">
             ${pending.map((l) => `
               <div class="list-row">
-                <span class="avatar avatar--sm" aria-hidden="true">${escapeHtml(initials(l.employees?.full_name || '?'))}</span>
+                <span class="avatar avatar--sm" aria-hidden="true">${initialsOf(l.employees?.full_name || '?')}</span>
                 <div class="list-row__main">
                   <div class="list-row__title">${escapeHtml(l.employees?.full_name || '—')} · ${escapeHtml(LEAVE_LABELS[l.kind] || l.kind)}</div>
                   <div class="list-row__sub">
@@ -71,7 +64,7 @@ export default function renderLeaves(root, ctx) {
                   </div>
                 </div>
                 <div class="row-actions" style="flex:none">
-                  <button class="btn btn--soft btn--sm" type="button" data-approve="${escapeHtml(l.id)}">${icon('i-check', 14)} Təsdiqlə</button>
+                  <button class="btn btn--soft btn--sm" type="button" data-approve="${escapeHtml(l.id)}">${icon('i-check', 13)} Təsdiqlə</button>
                   <button class="btn btn--danger-ghost btn--sm" type="button" data-reject="${escapeHtml(l.id)}">Rədd et</button>
                 </div>
               </div>
@@ -109,17 +102,15 @@ export default function renderLeaves(root, ctx) {
                     <tr>
                       ${isOwner ? `<td><strong>${escapeHtml(l.employees?.full_name || '—')}</strong></td>` : ''}
                       <td>${escapeHtml(LEAVE_LABELS[l.kind] || l.kind)}</td>
-                      <td class="tiny">${dateShort(l.start_date)} – ${dateShort(l.end_date)}</td>
+                      <td class="tiny nowrap">${dateShort(l.start_date)} – ${dateShort(l.end_date)}</td>
                       <td class="num">${daysBetween(l.start_date, l.end_date)}</td>
                       <td><span class="badge ${st.cls}">${st.label}</span></td>
                       <td>
                         <div class="row-actions">
                           ${isOwner && l.status === 'pending' ? `
-                            <button class="iconbtn iconbtn--sm" type="button" title="Təsdiqlə"
-                              data-approve="${escapeHtml(l.id)}">${icon('i-check', 15)}</button>
+                            <button class="iconbtn iconbtn--sm" type="button" title="Təsdiqlə" data-approve="${escapeHtml(l.id)}">${icon('i-check', 14)}</button>
                           ` : ''}
-                          <button class="iconbtn iconbtn--sm" type="button" title="Sil"
-                            data-del="${escapeHtml(l.id)}">${icon('i-trash', 15)}</button>
+                          <button class="iconbtn iconbtn--sm" type="button" title="Sil" data-del="${escapeHtml(l.id)}">${icon('i-trash', 14)}</button>
                         </div>
                       </td>
                     </tr>
@@ -131,10 +122,10 @@ export default function renderLeaves(root, ctx) {
         ` : emptyState({
           title: 'Hələ istək yoxdur',
           message: isOwner
-            ? 'İşçilər öz kabinetlərindən istək göndərə bilər, yaxud siz əl ilə əlavə edin.'
-            : 'Məzuniyyətə çıxmaq lazımdırsa, istək göndərin.',
+            ? 'İşçilər öz kabinetlərindən istək göndərə bilər.'
+            : 'Məzuniyyət lazımdırsa, istək göndərin.',
           iconName: 'i-calendar',
-          action: `<button class="btn btn--primary" type="button" id="lv-add2">${icon('i-plus', 16)} İstək əlavə et</button>`
+          action: `<button class="btn btn--primary" type="button" id="lv-add2">${icon('i-plus', 14)} İstək əlavə et</button>`
         })}
       </div>
     </section>

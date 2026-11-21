@@ -1,18 +1,13 @@
-/* ============================================================================
-   RahatHesab — Hesabatlar
-   ========================================================================== */
-
-import { icon, emptyState, escapeHtml, downloadFile } from '../../lib/dom.js';
+import { icon, emptyState, escapeHtml, downloadFile, toast, initialsOf } from '../../lib/dom.js';
 import {
-  money, moneyCompact, monthLabel, lastPeriods, currentPeriod, dateShort,
-  KIND_LABELS, METHOD_LABELS, buildCsv, todayISO, initials, toNumber
+  money, moneyCompact, monthLabel, lastPeriods,
+  KIND_LABELS, METHOD_LABELS, buildCsv, todayISO
 } from '../../lib/format.js';
 
 let rangeMonths = 6;
 
 export default function renderReports(root, ctx) {
-  const { payments, employees, balances, currency, worklogs, summary } = ctx;
-  const s = summary || {};
+  const { payments, balances, currency, worklogs } = ctx;
 
   const periods = lastPeriods(rangeMonths);
 
@@ -30,7 +25,7 @@ export default function renderReports(root, ctx) {
   }
 
   const monthValues = periods.map((p) => byMonth.get(p) || { paid: 0, advance: 0, salary: 0, bonus: 0, deduction: 0, count: 0 });
-  const maxVal = Math.max(1, ...monthValues.map((m) => m.paid + m.deduction));
+  const maxVal = Math.max(1, ...monthValues.map((m) => m.paid));
   const totalInRange = monthValues.reduce((a, m) => a + m.paid, 0);
   const avgMonth = totalInRange / Math.max(1, periods.length);
 
@@ -38,23 +33,18 @@ export default function renderReports(root, ctx) {
   const prev = monthValues[monthValues.length - 2] || { paid: 0 };
   const trend = prev.paid > 0 ? ((last.paid - prev.paid) / prev.paid) * 100 : 0;
 
-  // İşçi üzrə yekun
-  const perEmployee = new Map();
-  for (const b of balances || []) {
-    perEmployee.set(b.id, {
+  const empRows = (balances || [])
+    .map((b) => ({
       name: b.full_name,
       position: b.position,
       salary: Number(b.monthly_salary || 0),
       accrued: Number(b.accrued_total || 0),
       paid: Number(b.total_paid || 0),
       balance: Number(b.balance || 0),
-      active: !!b.is_active,
-      months: b.months_count || 1
-    });
-  }
-  const empRows = [...perEmployee.values()].sort((a, b) => b.balance - a.balance);
+      active: !!b.is_active
+    }))
+    .sort((a, b) => b.balance - a.balance);
 
-  // Üsul üzrə bölgü
   const byMethod = new Map();
   for (const p of payments) {
     if (p.kind === 'deduction') continue;
@@ -63,50 +53,44 @@ export default function renderReports(root, ctx) {
   }
   const methodTotal = [...byMethod.values()].reduce((a, b) => a + b, 0) || 1;
 
-  // Növ üzrə bölgü
   const byKind = new Map();
-  for (const p of payments) {
-    byKind.set(p.kind, (byKind.get(p.kind) || 0) + Number(p.amount || 0));
-  }
+  for (const p of payments) byKind.set(p.kind, (byKind.get(p.kind) || 0) + Number(p.amount || 0));
 
-  // Davamiyyət cəmi
   const workTotal = (worklogs || []).reduce((a, w) => a + Number(w.hours || 0) + Number(w.overtime || 0), 0);
 
   root.innerHTML = `
     <div class="toolbar">
       <div class="tabs" style="margin:0;flex:1 1 auto">
-        ${[3, 6, 12].map((m) => `
-          <button class="tabs__btn ${rangeMonths === m ? 'is-active' : ''}" type="button" data-range="${m}">${m} ay</button>
-        `).join('')}
+        ${[3, 6, 12].map((m) => `<button class="tabs__btn ${rangeMonths === m ? 'is-active' : ''}" type="button" data-range="${m}">${m} ay</button>`).join('')}
       </div>
-      <button class="btn btn--ghost btn--sm" type="button" id="rep-export">${icon('i-download', 15)} CSV</button>
-      <button class="btn btn--ghost btn--sm" type="button" id="rep-print">${icon('i-print', 15)} Çap</button>
+      <button class="btn btn--ghost btn--sm" type="button" id="rep-export">${icon('i-download', 13)} CSV</button>
+      <button class="btn btn--ghost btn--sm" type="button" id="rep-print">${icon('i-print', 13)} Çap</button>
     </div>
 
-    <div class="grid grid--stats" style="margin-bottom:14px">
+    <div class="grid grid--stats" style="margin-bottom:12px">
       <article class="stat stat--brand">
-        <div class="stat__top"><span class="stat__label">Dövr üzrə cəm</span><span class="stat__icon">${icon('i-banknote', 16)}</span></div>
+        <div class="stat__top"><span class="stat__label">Dövr üzrə cəm</span><span class="stat__icon">${icon('i-banknote', 14)}</span></div>
         <div class="stat__value stat__value--sm">${moneyCompact(totalInRange, currency)}</div>
         <div class="stat__hint">Son ${rangeMonths} ay</div>
       </article>
       <article class="stat">
-        <div class="stat__top"><span class="stat__label">Aylıq orta</span><span class="stat__icon stat__icon--info">${icon('i-chart', 16)}</span></div>
+        <div class="stat__top"><span class="stat__label">Aylıq orta</span><span class="stat__icon stat__icon--info">${icon('i-chart', 14)}</span></div>
         <div class="stat__value stat__value--sm">${moneyCompact(avgMonth, currency)}</div>
         <div class="stat__hint">Orta ödəniş</div>
       </article>
       <article class="stat ${trend < 0 ? 'stat--danger' : ''}">
-        <div class="stat__top"><span class="stat__label">Keçən aya nisbətən</span><span class="stat__icon ${trend < 0 ? 'stat__icon--danger' : ''}">${icon('i-trending', 16)}</span></div>
+        <div class="stat__top"><span class="stat__label">Keçən aya nisbətən</span><span class="stat__icon ${trend < 0 ? 'stat__icon--danger' : ''}">${icon('i-trending', 14)}</span></div>
         <div class="stat__value stat__value--sm">${trend > 0 ? '+' : ''}${Math.round(trend)}%</div>
-        <div class="stat__hint">${monthLabel(periods[periods.length - 1])} vs ${monthLabel(periods[periods.length - 2])}</div>
+        <div class="stat__hint">${monthLabel(periods[periods.length - 1])} / ${monthLabel(periods[periods.length - 2])}</div>
       </article>
       <article class="stat">
-        <div class="stat__top"><span class="stat__label">İş saatı</span><span class="stat__icon">${icon('i-clock', 16)}</span></div>
+        <div class="stat__top"><span class="stat__label">İş saatı</span><span class="stat__icon">${icon('i-clock', 14)}</span></div>
         <div class="stat__value stat__value--sm">${workTotal}</div>
         <div class="stat__hint">Bütün qeydlər üzrə</div>
       </article>
     </div>
 
-    <div class="grid grid--main" style="margin-bottom:14px">
+    <div class="grid grid--main" style="margin-bottom:12px">
       <section class="card">
         <div class="card__head">
           <div>
@@ -115,10 +99,10 @@ export default function renderReports(root, ctx) {
           </div>
         </div>
         <div class="card__body">
-          <div class="bars" style="height:190px">
+          <div class="bars" style="height:175px">
             ${periods.map((p, i) => {
               const m = monthValues[i];
-              const h = Math.max(3, Math.round((m.paid / maxVal) * 150));
+              const h = Math.max(3, Math.round((m.paid / maxVal) * 140));
               return `
                 <div class="bars__item" title="${monthLabel(p)}: ${money(m.paid, currency)}">
                   <span class="bars__value">${m.paid > 0 ? moneyCompact(m.paid, currency) : '—'}</span>
@@ -128,7 +112,7 @@ export default function renderReports(root, ctx) {
               `;
             }).join('')}
           </div>
-          <div class="legend" style="margin-top:14px">
+          <div class="legend" style="margin-top:12px">
             <span><i></i> Ödənilən məbləğ</span>
             <span><i class="soft"></i> Qeyd olmayan ay</span>
           </div>
@@ -151,16 +135,16 @@ export default function renderReports(root, ctx) {
             }).join('') || '<p class="tiny muted">Hələ ödəniş yoxdur.</p>'}
           </div>
 
-          <div style="margin-top:18px;display:grid;gap:10px">
+          <div style="margin-top:16px;display:grid;gap:9px">
             ${[...byMethod.entries()].map(([m, v]) => `
               <div>
-                <div class="row row--between" style="margin-bottom:4px">
-                  <span class="tiny" style="font-weight:700">${escapeHtml(METHOD_LABELS[m] || m)}</span>
+                <div class="row row--between" style="margin-bottom:3px">
+                  <span class="tiny" style="font-weight:600">${escapeHtml(METHOD_LABELS[m] || m)}</span>
                   <span class="tiny muted">${money(v, currency)}</span>
                 </div>
                 <div class="progress"><span style="width:${Math.round((v / methodTotal) * 100)}%"></span></div>
               </div>
-            `).join('') || ''}
+            `).join('')}
           </div>
         </div>
       </section>
@@ -191,10 +175,10 @@ export default function renderReports(root, ctx) {
                 ${empRows.map((r) => {
                   const pct = r.accrued > 0 ? Math.min(100, Math.round((r.paid / r.accrued) * 100)) : 0;
                   return `
-                    <tr style="${r.active ? '' : 'opacity:.6'}">
+                    <tr style="${r.active ? '' : 'opacity:.55'}">
                       <td>
                         <div class="cell-name">
-                          <span class="avatar avatar--sm" aria-hidden="true">${escapeHtml(initials(r.name))}</span>
+                          <span class="avatar avatar--sm" aria-hidden="true">${initialsOf(r.name)}</span>
                           <span>
                             <strong>${escapeHtml(r.name)}</strong>
                             <small>${escapeHtml(r.position || '—')}${r.active ? '' : ' · passiv'}</small>
@@ -204,7 +188,7 @@ export default function renderReports(root, ctx) {
                       <td class="num">${money(r.salary, currency)}</td>
                       <td class="num">${money(r.accrued, currency)}</td>
                       <td class="num">${money(r.paid, currency)}</td>
-                      <td class="num" style="${r.balance > 0.5 ? 'color:var(--danger);font-weight:800' : ''}">${money(r.balance, currency)}</td>
+                      <td class="num" style="${r.balance > 0.5 ? 'color:var(--danger);font-weight:700' : ''}">${money(r.balance, currency)}</td>
                       <td class="num">${pct}%</td>
                     </tr>
                   `;
@@ -239,7 +223,7 @@ export default function renderReports(root, ctx) {
     for (const r of empRows) rows.push([r.name, r.salary, r.accrued, r.paid, r.balance]);
 
     downloadFile(`hesabat-${todayISO()}.csv`, buildCsv(rows), 'text/csv;charset=utf-8');
-    import('../lib/dom.js').then((m) => m.toast('Hesabat yükləndi.', 'ok'));
+    toast('Hesabat yükləndi.', 'ok');
   });
 
   root.querySelector('#rep-print')?.addEventListener('click', () => window.print());

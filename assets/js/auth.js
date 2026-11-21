@@ -1,7 +1,3 @@
-/* ============================================================================
-   RahatHesab — Autentifikasiya ekranı
-   ========================================================================== */
-
 import { $, $$, icon, toast, showError, setLoading, isEmail } from './lib/dom.js';
 import {
   signIn,
@@ -13,15 +9,7 @@ import {
   isAlreadyRegisteredError
 } from './lib/store.js';
 
-const TITLES = {
-  login: 'Xoş gəlmisiniz',
-  register: 'Hesab yaradın',
-  reset: 'Şifrə bərpası'
-};
-
 let onAuthenticated = null;
-
-/** Son qeydiyyat cəhdində istifadə olunan e-poçt (təsdiqi yenidən göndərmək üçün). */
 let pendingEmail = '';
 
 export function initAuth(handler) {
@@ -34,92 +22,34 @@ export function initAuth(handler) {
     btn.addEventListener('click', () => switchTab(btn.dataset.authTab));
   });
 
-  // Şifrə göstər/gizlət
   $$('[data-toggle-password]').forEach((btn) => {
+    btn.innerHTML = icon('i-eye', 16);
     btn.addEventListener('click', () => {
       const input = document.getElementById(btn.dataset.togglePassword);
       if (!input) return;
       const show = input.type === 'password';
       input.type = show ? 'text' : 'password';
       btn.setAttribute('aria-label', show ? 'Şifrəni gizlət' : 'Şifrəni göstər');
-      btn.innerHTML = icon(show ? 'i-eye-off' : 'i-eye', 18);
+      btn.innerHTML = icon(show ? 'i-eye-off' : 'i-eye', 16);
     });
   });
 
   const pw = $('#reg-password');
   if (pw) pw.addEventListener('input', () => updateMeter(pw.value));
 
-  const loginForm = $('#login-form');
-  if (loginForm) loginForm.addEventListener('submit', handleLogin);
+  $('#login-form')?.addEventListener('submit', handleLogin);
+  $('#register-form')?.addEventListener('submit', handleRegister);
+  $('#reset-form')?.addEventListener('submit', handleReset);
 
-  const registerForm = $('#register-form');
-  if (registerForm) registerForm.addEventListener('submit', handleRegister);
-
-  const resetForm = $('#reset-form');
-  if (resetForm) resetForm.addEventListener('submit', handleReset);
-
-  const forgot = $('#forgot-password');
-  if (forgot) {
-    forgot.addEventListener('click', () => {
-      const emailInput = $('#login-email');
-      switchTab('reset');
-      const resetEmail = $('#reset-email');
-      if (resetEmail && emailInput && emailInput.value) resetEmail.value = emailInput.value;
-      setTimeout(() => resetEmail?.focus(), 60);
-    });
-  }
-
-  const resend = $('#resend-confirm');
-  if (resend) resend.addEventListener('click', handleResendConfirmation);
-}
-
-/* -------------------- TƏSDİQ MƏKTUBUNU YENİDƏN GÖNDƏR ------------------ */
-
-async function handleResendConfirmation() {
-  const btn = $('#resend-confirm');
-  const loginEmail = $('#login-email');
-  const email = (pendingEmail || (loginEmail && loginEmail.value) || '').trim();
-
-  if (!isEmail(email)) {
-    toast('Təsdiq linkini hansı e-poçta göndərək? E-poçt ünvanını yazın.', 'error', 5000);
-    if (loginEmail) loginEmail.focus();
-    return;
-  }
-
-  setLoading(btn, true);
-  try {
-    await resendConfirmation(email);
-    toast('Təsdiq məktubu ' + email + ' ünvanına yenidən göndərildi.', 'ok', 7000);
-  } catch (err) {
-    console.error('[auth] resend failed', err);
-    toast(friendlyError(err), 'error', 9000);
-  } finally {
-    setLoading(btn, false);
-  }
-}
-
-export function switchTab(tab) {
-  const name = TITLES[tab] ? tab : 'login';
-
-  $$('[data-auth-tab]').forEach((btn) => {
-    if (btn.classList.contains('segmented__btn')) {
-      const active = btn.dataset.authTab === name;
-      btn.classList.toggle('is-active', active);
-      btn.setAttribute('aria-selected', active ? 'true' : 'false');
-    }
+  $('#forgot-password')?.addEventListener('click', () => {
+    const emailInput = $('#login-email');
+    switchTab('reset');
+    const resetEmail = $('#reset-email');
+    if (resetEmail && emailInput?.value) resetEmail.value = emailInput.value;
+    setTimeout(() => resetEmail?.focus(), 50);
   });
 
-  $('#login-form').hidden = name !== 'login';
-  $('#register-form').hidden = name !== 'register';
-  $('#reset-form').hidden = name !== 'reset';
-
-  $$('#login-error, #login-success, #register-error, #reset-error, #reset-success, #register-success').forEach((el) => {
-    el.hidden = true;
-    el.textContent = '';
-  });
-
-  const focusMap = { login: '#login-email', register: '#reg-name', reset: '#reset-email' };
-  setTimeout(() => $(focusMap[name])?.focus({ preventScroll: true }), 50);
+  $('#resend-confirm')?.addEventListener('click', handleResendConfirmation);
 }
 
 export function showAuth() {
@@ -128,6 +58,29 @@ export function showAuth() {
   $('#app-shell').hidden = true;
   $('#auth-screen').hidden = false;
   document.title = 'Daxil ol — RahatHesab';
+}
+
+export function switchTab(tab) {
+  const name = ['login', 'register', 'reset'].includes(tab) ? tab : 'login';
+
+  $$('[data-auth-tab]').forEach((btn) => {
+    if (!btn.classList.contains('segmented__btn')) return;
+    const active = btn.dataset.authTab === name;
+    btn.classList.toggle('is-active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+
+  $('#login-form').hidden = name !== 'login';
+  $('#register-form').hidden = name !== 'register';
+  $('#reset-form').hidden = name !== 'reset';
+
+  $$('#login-error, #login-success, #register-error, #register-success, #reset-error, #reset-success').forEach((el) => {
+    el.hidden = true;
+    el.textContent = '';
+  });
+
+  const focusMap = { login: '#login-email', register: '#reg-name', reset: '#reset-email' };
+  setTimeout(() => $(focusMap[name])?.focus({ preventScroll: true }), 40);
 }
 
 function updateMeter(value) {
@@ -139,11 +92,29 @@ function updateMeter(value) {
   if (v.length >= 12) score += 1;
   if (/[a-z]/.test(v) && /[A-Z]/.test(v)) score += 1;
   if (/\d/.test(v) && /[^A-Za-z0-9]/.test(v)) score += 1;
-  if (!v) score = 0;
-  meter.setAttribute('data-level', String(Math.min(4, score)));
+  meter.setAttribute('data-level', String(Math.min(4, v ? score : 0)));
 }
 
-/* ------------------------------- LOGIN ---------------------------------- */
+async function handleResendConfirmation() {
+  const btn = $('#resend-confirm');
+  const email = (pendingEmail || $('#login-email')?.value || '').trim();
+
+  if (!isEmail(email)) {
+    toast('Təsdiq linkini hansı e-poçta göndərək? Əvvəlcə e-poçtu yazın.', 'error', 4500);
+    $('#login-email')?.focus();
+    return;
+  }
+
+  setLoading(btn, true);
+  try {
+    await resendConfirmation(email);
+    toast(`Təsdiq məktubu ${email} ünvanına göndərildi.`, 'ok', 6000);
+  } catch (err) {
+    toast(friendlyError(err), 'error', 7000);
+  } finally {
+    setLoading(btn, false);
+  }
+}
 
 async function handleLogin(event) {
   event.preventDefault();
@@ -166,24 +137,14 @@ async function handleLogin(event) {
   setLoading(submit, true);
   try {
     const session = await signIn(email, password);
-    if (!session) throw new Error('Sessiya yaradılmadı.');
-
     pendingEmail = '';
     form.reset();
     toast('Xoş gəlmisiniz!', 'ok');
     if (typeof onAuthenticated === 'function') await onAuthenticated(session);
   } catch (err) {
-    console.error('[auth] login failed', err);
-
-    // E-poçt təsdiqi gözlənilir — istifadəçiyə dəqiq yol göstər
     if (/email not confirmed|not confirmed/i.test(String(err?.message || ''))) {
       pendingEmail = email;
-      showError(
-        successBox,
-        'E-poçt ünvanı hələ təsdiqlənməyib. Poçtunuzu (və Spam qovluğunu) yoxlayın, ' +
-          'ya da aşağıdaki «Yenidən göndər» düyməsini basın.'
-      );
-      toast('Təsdiq linkini yenidən göndərə bilərsiniz.', 'info', 7000);
+      showError(successBox, 'E-poçt ünvanı təsdiqlənməyib. Poçtunuzu və spam qovluğunu yoxlayın, ya da «Yenidən göndər» düyməsini basın.');
     } else {
       showError(errorBox, friendlyError(err));
     }
@@ -191,8 +152,6 @@ async function handleLogin(event) {
     setLoading(submit, false);
   }
 }
-
-/* ------------------------------ REGISTER -------------------------------- */
 
 async function handleRegister(event) {
   event.preventDefault();
@@ -220,58 +179,42 @@ async function handleRegister(event) {
   try {
     const result = await signUp(email, password, fullName);
 
-    // Hesab yarandı və sessiya açıldı — birbaşa içəri
     if (result?.session) {
       $('#register-form').reset();
       updateMeter('');
-      toast('Hesab yaradıldı!', 'ok');
+      toast('Hesab yaradıldı.', 'ok');
       if (typeof onAuthenticated === 'function') await onAuthenticated(result.session);
       return;
     }
 
-    // Hesab yarandı, amma e-poçt təsdiqi gözlənilir
     $('#register-form').reset();
     updateMeter('');
     pendingEmail = email;
     switchTab('login');
-    const loginEmailOk = $('#login-email');
-    if (loginEmailOk) loginEmailOk.value = email;
-    // Mesaj GÖRÜNƏN (login) tabın sahasına yazılır — register formu gizlədilib
-    showError(
-      $('#login-success'),
-      'Hesab yaradıldı. ' + email + ' ünvanına təsdiq linki göndərdik — linki açıb daxil olun.'
-    );
-    toast('Təsdiq linki göndərildi. Poçtunuzu yoxlayın.', 'info', 7000);
+    const loginEmail = $('#login-email');
+    if (loginEmail) loginEmail.value = email;
+    showError($('#login-success'), `Hesab yaradıldı. ${email} ünvanına təsdiq linki göndərdik — linki açıb daxil olun.`);
+    toast('Təsdiq linki göndərildi. Poçtunuzu yoxlayın.', 'info', 6000);
   } catch (err) {
-    console.error('[auth] register failed', err);
-    const message = friendlyError(err);
-
-    // E-poçt limiti / artıq qeydiyyat — istifadəçiyə əməli yol göstər
     if (isRateLimitError(err) || isAlreadyRegisteredError(err)) {
       pendingEmail = email;
       switchTab('login');
       const loginEmail = $('#login-email');
       if (loginEmail) loginEmail.value = email;
-      const loginPassword = $('#login-password');
-      if (loginPassword) loginPassword.focus();
-      // Mesaj GÖRÜNƏN (login) tabın sahasına yazılır
+      $('#login-password')?.focus();
       showError(
         $('#login-success'),
         isAlreadyRegisteredError(err)
           ? 'Bu e-poçt ilə hesab artıq mövcuddur — şifrənizi yazıb «Daxil ol» düyməsini basın.'
-          : 'E-poçt göndərmə limiti dolub, amma hesabınız yaranmış ola bilər. ' +
-            'Şifrənizi yazıb «Daxil ol» cəhd edin. Alınmasa 1 saat sonra yenidən yoxlayın.'
+          : 'E-poçt göndərmə limiti dolub, amma hesabınız yaranmış ola bilər. Şifrənizi yazıb daxil olmağı yoxlayın.'
       );
-      toast('Hesab ola bilər — birbaşa daxil olmağı cəhd edin.', 'info', 8000);
     } else {
-      showError(errorBox, message);
+      showError(errorBox, friendlyError(err));
     }
   } finally {
     setLoading(submit, false);
   }
 }
-
-/* -------------------------------- RESET --------------------------------- */
 
 async function handleReset(event) {
   event.preventDefault();
@@ -289,9 +232,8 @@ async function handleReset(event) {
   setLoading(submit, true);
   try {
     await resetPassword(email);
-    showError(successBox, 'Bərpa linki ' + email + ' ünvanına göndərildi.');
+    showError(successBox, `Bərpa linki ${email} ünvanına göndərildi.`);
   } catch (err) {
-    console.error('[auth] reset failed', err);
     showError(errorBox, friendlyError(err));
   } finally {
     setLoading(submit, false);

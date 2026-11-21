@@ -1,27 +1,15 @@
 -- ============================================================================
---  RahatHesab — Əməkhaqqı və İşçi İdarəetmə Platforması
---  Supabase (PostgreSQL) sxemi — ÇOXİSTİFADƏÇİLİ (multi-tenant)
+--  RahatHesab — tam baza sxemi (tək fayl)
 --  ---------------------------------------------------------------------------
---  BU FAYL NƏ EDİR?
---    * Yüzlərlə (minlərlə) sahibkar eyni bazada, bir-birindən TAM TƏCRİD
---      olunmuş şəkildə işləyə bilir.
---    * Hər sahibkarın İSTƏNİLƏN SAYDA biznesi ola bilər.
---    * İşçi qeydiyyatdan keçib 6-8 simvollu GİRİŞ KODU ilə öz kabinetinə
---      qoşulur — "işçi kimi daxil olmaq mümkün deyil" problemi belə həll olunur
---      (e-poçt təsdiqindən asılı deyil).
---    * Bütün məlumatlar Row Level Security (RLS) ilə qorunur.
---
---  NECƏ İŞƏ SALINIR?
---    1. Supabase Dashboard → SQL Editor → New query
---    2. Bu faylın HAMISINI kopyalayın → "Run"
---    3. Skript idempotentdir: təkrar işə salmaq təhlükəsizdir.
+--  İstifadə: Supabase → SQL Editor → bu faylın HAMISINI yapışdırın → Run.
+--  Skript idempotentdir: təkrar işə salmaq təhlükəsizdir.
 -- ============================================================================
 
 create extension if not exists pgcrypto;
 
--- ============================================================================
---  1. KÖMƏKÇİ: GİRİŞ KODU GENERATORU
--- ============================================================================
+-- ---------------------------------------------------------------------------
+--  1. Köməkçi: giriş kodu generatoru
+-- ---------------------------------------------------------------------------
 create or replace function public.gen_code(p_len integer default 8)
 returns text
 language sql
@@ -36,14 +24,11 @@ as $$
   cross join (select 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'::text as chars) c;
 $$;
 
-comment on function public.gen_code(integer) is
-  'Qarışdırıla bilən simvollar olmadan təsadüfi giriş kodu (məs. K7M4P9QX).';
+grant execute on function public.gen_code(integer) to authenticated;
 
--- ============================================================================
---  2. CƏDVƏLLƏR
--- ============================================================================
-
--- 2.1 profiles — hər auth istifadəçisi üçün profil ---------------------------
+-- ---------------------------------------------------------------------------
+--  2. Cədvəllər
+-- ---------------------------------------------------------------------------
 create table if not exists public.profiles (
   id          uuid primary key references auth.users(id) on delete cascade,
   email       text,
@@ -55,9 +40,6 @@ create table if not exists public.profiles (
 
 alter table public.profiles add column if not exists phone text;
 
-comment on table public.profiles is 'Hər Supabase Auth istifadəçisi üçün profil (ad, e-poçt, telefon).';
-
--- 2.2 businesses — sahibkarın biznesi (BİRDƏN ÇOX OLA BİLƏR) ----------------
 create table if not exists public.businesses (
   id           uuid primary key default gen_random_uuid(),
   owner_id     uuid not null references auth.users(id) on delete cascade,
@@ -79,19 +61,11 @@ alter table public.businesses add column if not exists pay_day integer not null 
 alter table public.businesses add column if not exists is_archived boolean not null default false;
 update public.businesses set join_code = public.gen_code(8) where join_code is null;
 
--- KÖHNƏ MƏHDUDİYYƏTİ SİL: əvvəl "hər sahibkarın yalnız 1 biznesi" qaydası var idi
 alter table public.businesses drop constraint if exists businesses_owner_unique;
 
 create index if not exists businesses_owner_idx on public.businesses (owner_id);
-create unique index if not exists businesses_join_code_uidx
-  on public.businesses (upper(join_code));
+create unique index if not exists businesses_join_code_uidx on public.businesses (upper(join_code));
 
-comment on table public.businesses is
-  'Sahibkarın biznesi. Hər sahibkarın istənilən sayda biznesi ola bilər; hər biznes tam təcrid olunmuşdur.';
-comment on column public.businesses.join_code is
-  'Biznesin ümumi giriş kodu (ehtiyat variant). Əsas üsul — işçinin öz access_code-u.';
-
--- 2.3 business_members — biznesə bağlı istifadəçilər ------------------------
 create table if not exists public.business_members (
   id            uuid primary key default gen_random_uuid(),
   business_id   uuid not null references public.businesses(id) on delete cascade,
@@ -101,15 +75,9 @@ create table if not exists public.business_members (
   created_at    timestamptz not null default now()
 );
 
-create unique index if not exists business_members_unique_idx
-  on public.business_members (business_id, user_id);
-create index if not exists business_members_user_idx
-  on public.business_members (user_id);
+create unique index if not exists business_members_unique_idx on public.business_members (business_id, user_id);
+create index if not exists business_members_user_idx on public.business_members (user_id);
 
-comment on table public.business_members is
-  'Biznes ↔ istifadəçi əlaqəsi. İşçi kabineti və çoxsaylı sahibkar dəstəyi üçün istifadə olunur.';
-
--- 2.4 employees — işçi kartları ---------------------------------------------
 create table if not exists public.employees (
   id              uuid primary key default gen_random_uuid(),
   business_id     uuid not null references public.businesses(id) on delete cascade,
@@ -134,26 +102,16 @@ create index if not exists employees_business_idx on public.employees (business_
 create index if not exists employees_user_idx on public.employees (user_id);
 create index if not exists employees_active_idx on public.employees (business_id, is_active);
 
--- Köhnə qayda: bir istifadəçi yalnız bir işçi kartına bağlana bilər.
--- YENİ qayda: işçi BİRDƏN ÇOX biznesdə işləyə bilər → məhdudiyyət silinir.
 drop index if exists public.employees_user_unique_idx;
 
--- Eyni biznesdə eyni e-poçtla iki işçi kartı olmasın
 create unique index if not exists employees_business_email_uidx
   on public.employees (business_id, lower(email))
   where email is not null and length(trim(email)) > 0;
 
--- Giriş kodu qlobal olaraq unikal olmalıdır
 create unique index if not exists employees_access_code_uidx
   on public.employees (upper(access_code))
   where access_code is not null;
 
-comment on table public.employees is
-  'İşçi kartı. access_code ilə işçi öz kabinetinə qoşulur (user_id doldurulur).';
-comment on column public.employees.access_code is
-  'İşçinin şəxsi giriş kodu. İşçi qeydiyyatdan sonra bu kodu daxil edir.';
-
--- 2.5 salary_payments — pul hərəkətləri -------------------------------------
 create table if not exists public.salary_payments (
   id           uuid primary key default gen_random_uuid(),
   business_id  uuid not null references public.businesses(id) on delete cascade,
@@ -172,10 +130,6 @@ create index if not exists payments_business_idx on public.salary_payments (busi
 create index if not exists payments_employee_idx on public.salary_payments (employee_id, paid_at desc);
 create index if not exists payments_created_idx on public.salary_payments (created_at desc);
 
-comment on table public.salary_payments is
-  'Bütün pul hərəkətləri: advance=avans, salary=maaş, bonus=mükafat, deduction=tutulma.';
-
--- 2.6 work_logs — davamiyyət / iş saatları ----------------------------------
 create table if not exists public.work_logs (
   id           uuid primary key default gen_random_uuid(),
   business_id  uuid not null references public.businesses(id) on delete cascade,
@@ -191,33 +145,23 @@ create table if not exists public.work_logs (
 
 create index if not exists work_logs_business_idx on public.work_logs (business_id, work_date desc);
 
-comment on table public.work_logs is 'Gündəlik davamiyyət: iş saatları və əlavə iş saatları.';
-
--- 2.7 leave_requests — məzuniyyət istəkləri ---------------------------------
 create table if not exists public.leave_requests (
   id           uuid primary key default gen_random_uuid(),
   business_id  uuid not null references public.businesses(id) on delete cascade,
   employee_id  uuid not null references public.employees(id) on delete cascade,
-  kind         text not null default 'vacation'
-                 check (kind in ('vacation', 'sick', 'unpaid', 'other')),
+  kind         text not null default 'vacation' check (kind in ('vacation', 'sick', 'unpaid', 'other')),
   start_date   date not null default current_date,
   end_date     date not null default current_date,
   reason       text,
-  status       text not null default 'pending'
-                 check (status in ('pending', 'approved', 'rejected')),
+  status       text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
   decided_at   timestamptz,
   decided_by   uuid references auth.users(id) on delete set null,
   created_at   timestamptz not null default now()
 );
 
-create index if not exists leave_requests_business_idx
-  on public.leave_requests (business_id, created_at desc);
-create index if not exists leave_requests_employee_idx
-  on public.leave_requests (employee_id, created_at desc);
+create index if not exists leave_requests_business_idx on public.leave_requests (business_id, created_at desc);
+create index if not exists leave_requests_employee_idx on public.leave_requests (employee_id, created_at desc);
 
-comment on table public.leave_requests is 'İşçinin məzuniyyət/xəstəlik istəyi və sahibkarın qərarı.';
-
--- 2.8 notes — qeydlər və tapşırıqlar ---------------------------------------
 create table if not exists public.notes (
   id           uuid primary key default gen_random_uuid(),
   business_id  uuid not null references public.businesses(id) on delete cascade,
@@ -232,9 +176,6 @@ create table if not exists public.notes (
 
 create index if not exists notes_business_idx on public.notes (business_id, is_done, created_at desc);
 
-comment on table public.notes is 'Biznes üzrə sadə qeydlər / tapşırıq siyahısı.';
-
--- 2.9 activity_log — son hərəkətlər ---------------------------------------
 create table if not exists public.activity_log (
   id           uuid primary key default gen_random_uuid(),
   business_id  uuid not null references public.businesses(id) on delete cascade,
@@ -245,16 +186,11 @@ create table if not exists public.activity_log (
   created_at   timestamptz not null default now()
 );
 
-create index if not exists activity_log_business_idx
-  on public.activity_log (business_id, created_at desc);
+create index if not exists activity_log_business_idx on public.activity_log (business_id, created_at desc);
 
-comment on table public.activity_log is 'Biznesdə kim nə etdi — sadə jurnal.';
-
--- ============================================================================
---  3. TRİGGERLƏR
--- ============================================================================
-
--- 3.1 updated_at avtomatik yenilənməsi
+-- ---------------------------------------------------------------------------
+--  3. Triggerlər
+-- ---------------------------------------------------------------------------
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
@@ -282,7 +218,6 @@ drop trigger if exists trg_notes_updated on public.notes;
 create trigger trg_notes_updated before update on public.notes
   for each row execute function public.set_updated_at();
 
--- 3.2 Yeni auth istifadəçisi → profil yaradılması
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -309,34 +244,6 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- 3.3 Ödənişin business_id-si işçinin biznesi ilə uyğunlaşdırılır
-create or replace function public.sync_payment_business()
-returns trigger
-language plpgsql
-security definer
-set search_path = public, pg_temp
-as $$
-declare
-  v_business uuid;
-begin
-  select e.business_id into v_business
-  from public.employees e
-  where e.id = new.employee_id;
-
-  if v_business is null then
-    raise exception 'EMPLOYEE_NOT_FOUND' using errcode = '23503';
-  end if;
-
-  new.business_id := v_business;
-  return new;
-end;
-$$;
-
-drop trigger if exists trg_payment_business on public.salary_payments;
-create trigger trg_payment_business before insert or update on public.salary_payments
-  for each row execute function public.sync_payment_business();
-
--- 3.4 Davamiyyət / məzuniyyət üçün business_id uyğunlaşdırılması
 create or replace function public.sync_child_business()
 returns trigger
 language plpgsql
@@ -346,18 +253,18 @@ as $$
 declare
   v_business uuid;
 begin
-  select e.business_id into v_business
-  from public.employees e
-  where e.id = new.employee_id;
-
+  select e.business_id into v_business from public.employees e where e.id = new.employee_id;
   if v_business is null then
     raise exception 'EMPLOYEE_NOT_FOUND' using errcode = '23503';
   end if;
-
   new.business_id := v_business;
   return new;
 end;
 $$;
+
+drop trigger if exists trg_payment_business on public.salary_payments;
+create trigger trg_payment_business before insert or update on public.salary_payments
+  for each row execute function public.sync_child_business();
 
 drop trigger if exists trg_worklog_business on public.work_logs;
 create trigger trg_worklog_business before insert or update on public.work_logs
@@ -367,7 +274,6 @@ drop trigger if exists trg_leave_business on public.leave_requests;
 create trigger trg_leave_business before insert or update on public.leave_requests
   for each row execute function public.sync_child_business();
 
--- 3.5 Biznes yaradıldıqda sahibi business_members-ə yazılır
 create or replace function public.handle_new_business()
 returns trigger
 language plpgsql
@@ -377,8 +283,7 @@ as $$
 begin
   insert into public.business_members (business_id, user_id, role, status)
   values (new.id, new.owner_id, 'owner', 'active')
-  on conflict (business_id, user_id) do update
-    set role = 'owner', status = 'active';
+  on conflict (business_id, user_id) do update set role = 'owner', status = 'active';
   return new;
 end;
 $$;
@@ -387,12 +292,9 @@ drop trigger if exists trg_business_owner_member on public.businesses;
 create trigger trg_business_owner_member after insert on public.businesses
   for each row execute function public.handle_new_business();
 
--- ============================================================================
---  4. KÖMƏKÇİ FUNKSİYALAR (RLS üçün — SECURITY DEFINER)
---     Bunlar cədvəllər yaradıldıqdan SONRA yaradılır.
--- ============================================================================
-
--- İstifadəçinin oxuya bildiyi bütün biznes ID-ləri
+-- ---------------------------------------------------------------------------
+--  4. RLS köməkçi funksiyaları
+-- ---------------------------------------------------------------------------
 create or replace function public.current_business_ids()
 returns setof uuid
 language sql
@@ -408,7 +310,6 @@ as $$
   select e.business_id from public.employees e where e.user_id = auth.uid();
 $$;
 
--- İstifadəçi bu biznesi İDARƏ EDƏ BİLƏRMİ? (sahibkar)
 create or replace function public.can_manage_business(p_business_id uuid)
 returns boolean
 language sql
@@ -422,7 +323,6 @@ as $$
   );
 $$;
 
--- İstifadəçi bu biznesi OXUYA BİLƏRMİ? (sahibkar və ya işçi)
 create or replace function public.can_read_business(p_business_id uuid)
 returns boolean
 language sql
@@ -433,18 +333,6 @@ as $$
   select p_business_id in (select public.current_business_ids());
 $$;
 
--- İstifadəçinin işçi kartı ID-ləri
-create or replace function public.my_employee_ids()
-returns setof uuid
-language sql
-stable
-security definer
-set search_path = public, pg_temp
-as $$
-  select e.id from public.employees e where e.user_id = auth.uid();
-$$;
-
--- Bu işçi kartı cari istifadəçinin özünə aiddirmi?
 create or replace function public.is_self_employee(p_employee_id uuid)
 returns boolean
 language sql
@@ -458,62 +346,63 @@ as $$
   );
 $$;
 
--- Geriyə uyğunluq üçün köhnə adlar
-create or replace function public.owns_business(p_business_id uuid)
-returns boolean
-language sql
-stable
-security definer
-set search_path = public, pg_temp
-as $$ select public.can_manage_business(p_business_id); $$;
+grant execute on function public.current_business_ids() to authenticated;
+grant execute on function public.can_manage_business(uuid) to authenticated;
+grant execute on function public.can_read_business(uuid) to authenticated;
+grant execute on function public.is_self_employee(uuid) to authenticated;
 
-create or replace function public.current_business_id()
-returns uuid
-language sql
-stable
-security definer
-set search_path = public, pg_temp
-as $$
-  select b.id from public.businesses b
-  where b.owner_id = auth.uid()
-  order by b.created_at asc limit 1;
-$$;
-
-create or replace function public.current_employee_id()
-returns uuid
-language sql
-stable
+-- ---------------------------------------------------------------------------
+--  5. Profil zəmanəti
+-- ---------------------------------------------------------------------------
+create or replace function public.ensure_my_profile(p_full_name text default null)
+returns public.profiles
+language plpgsql
 security definer
 set search_path = public, pg_temp
 as $$
-  select e.id from public.employees e
-  where e.user_id = auth.uid()
-  order by e.created_at asc limit 1;
+declare
+  v_uid   uuid := auth.uid();
+  v_email text;
+  v_name  text;
+  v_row   public.profiles;
+begin
+  if v_uid is null then
+    raise exception 'NOT_AUTHENTICATED' using errcode = '42501';
+  end if;
+
+  select lower(coalesce(u.email, '')),
+         coalesce(
+           nullif(trim(coalesce(p_full_name, '')), ''),
+           nullif(trim(coalesce(u.raw_user_meta_data ->> 'full_name', '')), ''),
+           nullif(trim(coalesce(u.raw_user_meta_data ->> 'name', '')), ''),
+           ''
+         )
+    into v_email, v_name
+  from auth.users u
+  where u.id = v_uid;
+
+  insert into public.profiles (id, email, full_name)
+  values (v_uid, nullif(v_email, ''), coalesce(v_name, ''))
+  on conflict (id) do update
+    set email = coalesce(excluded.email, public.profiles.email),
+        full_name = case
+                      when coalesce(trim(public.profiles.full_name), '') = ''
+                        then coalesce(excluded.full_name, '')
+                      else public.profiles.full_name
+                    end,
+        updated_at = now();
+
+  select * into v_row from public.profiles where id = v_uid;
+  return v_row;
+end;
 $$;
 
-create or replace function public.current_employee_business_id()
-returns uuid
-language sql
-stable
-security definer
-set search_path = public, pg_temp
-as $$
-  select e.business_id from public.employees e
-  where e.user_id = auth.uid()
-  order by e.created_at asc limit 1;
-$$;
+revoke all on function public.ensure_my_profile(text) from public, anon;
+grant execute on function public.ensure_my_profile(text) to authenticated;
 
--- ============================================================================
---  5. İŞÇİ QOŞULMASI — GİRİŞ KODU İLƏ  ★ ƏSAS DÜZƏLİŞ ★
--- ============================================================================
---  Əvvəlki versiya yalnız e-poçt uyğunluğuna və e-poçt təsdiqinə güvənirdi.
---  Ona görə işçilər çox vaxt daxil ola bilmirdi (təsdiq gözləyir, e-poçt
---  fərqlidir, sahibkar e-poçtu yanlış yazıb və s.).
---
---  İndi işçi sahibkardan aldığı KODU daxil edir və dərhal qoşulur.
---  Bu funksiya SECURITY DEFINER-dır, yəni RLS-i keçir, amma yalnız öz hesabına
---  bağlamağa icazə verir.
--- ============================================================================
+-- ---------------------------------------------------------------------------
+--  6. İşçi qoşulması
+-- ---------------------------------------------------------------------------
 create or replace function public.claim_employee_by_code(p_code text)
 returns json
 language plpgsql
@@ -521,10 +410,10 @@ security definer
 set search_path = public, pg_temp
 as $$
 declare
-  v_uid      uuid := auth.uid();
-  v_code     text := upper(regexp_replace(coalesce(p_code, ''), '\s', '', 'g'));
-  v_emp      public.employees%rowtype;
-  v_biz      public.businesses%rowtype;
+  v_uid  uuid := auth.uid();
+  v_code text := upper(regexp_replace(coalesce(p_code, ''), '\s', '', 'g'));
+  v_emp  public.employees%rowtype;
+  v_biz  public.businesses%rowtype;
 begin
   if v_uid is null then
     raise exception 'NOT_AUTHENTICATED' using errcode = '42501';
@@ -534,10 +423,7 @@ begin
     raise exception 'INVALID_CODE' using errcode = '22023';
   end if;
 
-  select * into v_emp
-  from public.employees e
-  where upper(e.access_code) = v_code
-  limit 1;
+  select * into v_emp from public.employees e where upper(e.access_code) = v_code limit 1;
 
   if v_emp.id is null then
     raise exception 'INVALID_CODE' using errcode = '22023';
@@ -547,10 +433,7 @@ begin
     raise exception 'CODE_ALREADY_USED' using errcode = '23505';
   end if;
 
-  -- İşçi kartını bu istifadəçiyə bağla
-  update public.employees
-     set user_id = v_uid
-   where id = v_emp.id;
+  update public.employees set user_id = v_uid where id = v_emp.id;
 
   insert into public.business_members (business_id, user_id, role, status)
   values (v_emp.business_id, v_uid, 'employee', 'active')
@@ -570,7 +453,6 @@ $$;
 revoke all on function public.claim_employee_by_code(text) from public, anon;
 grant execute on function public.claim_employee_by_code(text) to authenticated;
 
--- Ehtiyat üsul: e-poçt uyğunluğu ilə avtomatik qoşulma
 create or replace function public.claim_employee_account()
 returns uuid
 language plpgsql
@@ -578,25 +460,22 @@ security definer
 set search_path = public, pg_temp
 as $$
 declare
-  v_uid       uuid := auth.uid();
-  v_email     text;
-  v_employee  uuid;
+  v_uid      uuid := auth.uid();
+  v_email    text;
+  v_employee uuid;
 begin
   if v_uid is null then
     raise exception 'NOT_AUTHENTICATED' using errcode = '42501';
   end if;
 
-  select lower(coalesce(u.email, '')) into v_email
-  from auth.users u where u.id = v_uid;
-
+  select lower(coalesce(u.email, '')) into v_email from auth.users u where u.id = v_uid;
   if v_email is null or v_email = '' then
     return null;
   end if;
 
   select e.id into v_employee
   from public.employees e
-  where lower(e.email) = v_email
-    and e.user_id is null
+  where lower(e.email) = v_email and e.user_id is null
   order by e.created_at asc
   limit 1;
 
@@ -618,7 +497,6 @@ $$;
 revoke all on function public.claim_employee_account() from public, anon;
 grant execute on function public.claim_employee_account() to authenticated;
 
--- İşçi öz əlaqə məlumatını yeniləyə bilsin (maaşa toxuna bilməz)
 create or replace function public.update_my_contact(p_phone text)
 returns void
 language plpgsql
@@ -638,7 +516,6 @@ $$;
 
 grant execute on function public.update_my_contact(text) to authenticated;
 
--- Biznesə qoşulma kodunu yenilə (sahibkar)
 create or replace function public.rotate_join_code(p_business_id uuid)
 returns text
 language plpgsql
@@ -658,13 +535,52 @@ begin
 end;
 $$;
 
+revoke all on function public.rotate_join_code(uuid) from public, anon;
 grant execute on function public.rotate_join_code(uuid) to authenticated;
 
--- ============================================================================
---  6. GÖRÜNÜŞLƏR
--- ============================================================================
+create or replace function public.regenerate_employee_code(p_employee_id uuid)
+returns text
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_code text;
+  v_biz  uuid;
+  i      int := 0;
+begin
+  select e.business_id into v_biz from public.employees e where e.id = p_employee_id;
 
--- 6.1 İşçi üzrə hesablanmış maaş, ödənişlər və qalıq borc
+  if v_biz is null then
+    raise exception 'EMPLOYEE_NOT_FOUND' using errcode = '23503';
+  end if;
+
+  if not public.can_manage_business(v_biz) then
+    raise exception 'FORBIDDEN' using errcode = '42501';
+  end if;
+
+  loop
+    i := i + 1;
+    v_code := public.gen_code(8);
+    begin
+      update public.employees set access_code = v_code where id = p_employee_id;
+      return v_code;
+    exception
+      when unique_violation then
+        if i >= 20 then
+          raise exception 'CODE_GENERATION_FAILED' using errcode = '23505';
+        end if;
+    end;
+  end loop;
+end;
+$$;
+
+revoke all on function public.regenerate_employee_code(uuid) from public, anon;
+grant execute on function public.regenerate_employee_code(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
+--  7. Görünüş: işçi üzrə hesablaşma
+-- ---------------------------------------------------------------------------
 drop view if exists public.v_employee_balances;
 
 create view public.v_employee_balances
@@ -726,71 +642,50 @@ from public.employees e
 join months m on m.id = e.id
 left join agg a on a.employee_id = e.id;
 
-comment on view public.v_employee_balances is
-  'İşçi üzrə hesablanmış maaş, ödənişlər və qalıq borc. RLS valideyn cədvəllərdən tətbiq olunur.';
-
--- ============================================================================
---  7. ROW LEVEL SECURITY
--- ============================================================================
-alter table public.profiles        enable row level security;
-alter table public.businesses      enable row level security;
+-- ---------------------------------------------------------------------------
+--  8. Row Level Security
+-- ---------------------------------------------------------------------------
+alter table public.profiles         enable row level security;
+alter table public.businesses       enable row level security;
 alter table public.business_members enable row level security;
-alter table public.employees       enable row level security;
-alter table public.salary_payments enable row level security;
-alter table public.work_logs       enable row level security;
-alter table public.leave_requests  enable row level security;
-alter table public.notes           enable row level security;
-alter table public.activity_log    enable row level security;
+alter table public.employees        enable row level security;
+alter table public.salary_payments  enable row level security;
+alter table public.work_logs        enable row level security;
+alter table public.leave_requests   enable row level security;
+alter table public.notes            enable row level security;
+alter table public.activity_log     enable row level security;
 
--- 7.1 profiles -------------------------------------------------------------
 drop policy if exists profiles_select_own on public.profiles;
 create policy profiles_select_own on public.profiles
-  for select to authenticated
-  using (id = auth.uid());
+  for select to authenticated using (id = auth.uid());
 
 drop policy if exists profiles_insert_own on public.profiles;
 create policy profiles_insert_own on public.profiles
-  for insert to authenticated
-  with check (id = auth.uid());
+  for insert to authenticated with check (id = auth.uid());
 
 drop policy if exists profiles_update_own on public.profiles;
 create policy profiles_update_own on public.profiles
-  for update to authenticated
-  using (id = auth.uid())
-  with check (id = auth.uid());
+  for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
 
--- 7.2 businesses -----------------------------------------------------------
 drop policy if exists businesses_select_own on public.businesses;
 drop policy if exists businesses_insert_own on public.businesses;
 drop policy if exists businesses_update_own on public.businesses;
 drop policy if exists businesses_delete_own on public.businesses;
 drop policy if exists businesses_employee_read on public.businesses;
 
--- OXU: öz biznesi VƏ YA üzvü/işçisi olduğu biznes.
--- ⚠️ `owner_id = auth.uid()` MÜTLƏQ olmalıdır:
---    `can_read_business()` → `current_business_ids()` STABLE-dir və sorğunun
---    əvvəlindəki snapshot-u görür. Yalnız bu funksiyaya güvənilsə,
---    `INSERT ... RETURNING` (yəni `.insert().select()`) yeni sətri snapshot-da
---    tapa bilmir və istifadəçi 42501 «icazəniz yoxdur» alır — biznes yaratmaq
---    mümkün olmur. Sətrin ÖZ sütununa baxan şərt bu problemi həll edir.
 create policy businesses_select_own on public.businesses
   for select to authenticated
   using (owner_id = auth.uid() or public.can_read_business(id));
 
 create policy businesses_insert_own on public.businesses
-  for insert to authenticated
-  with check (owner_id = auth.uid());
+  for insert to authenticated with check (owner_id = auth.uid());
 
 create policy businesses_update_own on public.businesses
-  for update to authenticated
-  using (owner_id = auth.uid())
-  with check (owner_id = auth.uid());
+  for update to authenticated using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 
 create policy businesses_delete_own on public.businesses
-  for delete to authenticated
-  using (owner_id = auth.uid());
+  for delete to authenticated using (owner_id = auth.uid());
 
--- 7.3 business_members -----------------------------------------------------
 drop policy if exists members_select_own on public.business_members;
 drop policy if exists members_owner_all on public.business_members;
 
@@ -803,7 +698,6 @@ create policy members_owner_all on public.business_members
   using (public.can_manage_business(business_id))
   with check (public.can_manage_business(business_id));
 
--- 7.4 employees ------------------------------------------------------------
 drop policy if exists employees_owner_all on public.employees;
 drop policy if exists employees_self_select on public.employees;
 
@@ -813,10 +707,8 @@ create policy employees_owner_all on public.employees
   with check (public.can_manage_business(business_id));
 
 create policy employees_self_select on public.employees
-  for select to authenticated
-  using (user_id = auth.uid());
+  for select to authenticated using (user_id = auth.uid());
 
--- 7.5 salary_payments ------------------------------------------------------
 drop policy if exists payments_owner_all on public.salary_payments;
 drop policy if exists payments_self_select on public.salary_payments;
 
@@ -826,13 +718,13 @@ create policy payments_owner_all on public.salary_payments
   with check (public.can_manage_business(business_id));
 
 create policy payments_self_select on public.salary_payments
-  for select to authenticated
-  using (public.is_self_employee(employee_id));
+  for select to authenticated using (public.is_self_employee(employee_id));
 
--- 7.6 work_logs ------------------------------------------------------------
 drop policy if exists worklogs_owner_all on public.work_logs;
 drop policy if exists worklogs_self_select on public.work_logs;
 drop policy if exists worklogs_self_insert on public.work_logs;
+drop policy if exists worklogs_self_update on public.work_logs;
+drop policy if exists worklogs_self_delete on public.work_logs;
 
 create policy worklogs_owner_all on public.work_logs
   for all to authenticated
@@ -840,17 +732,24 @@ create policy worklogs_owner_all on public.work_logs
   with check (public.can_manage_business(business_id));
 
 create policy worklogs_self_select on public.work_logs
-  for select to authenticated
-  using (public.is_self_employee(employee_id));
+  for select to authenticated using (public.is_self_employee(employee_id));
 
 create policy worklogs_self_insert on public.work_logs
-  for insert to authenticated
+  for insert to authenticated with check (public.is_self_employee(employee_id));
+
+create policy worklogs_self_update on public.work_logs
+  for update to authenticated
+  using (public.is_self_employee(employee_id))
   with check (public.is_self_employee(employee_id));
 
--- 7.7 leave_requests -------------------------------------------------------
+create policy worklogs_self_delete on public.work_logs
+  for delete to authenticated using (public.is_self_employee(employee_id));
+
 drop policy if exists leaves_owner_all on public.leave_requests;
 drop policy if exists leaves_self_select on public.leave_requests;
 drop policy if exists leaves_self_insert on public.leave_requests;
+drop policy if exists leaves_self_update on public.leave_requests;
+drop policy if exists leaves_self_delete on public.leave_requests;
 
 create policy leaves_owner_all on public.leave_requests
   for all to authenticated
@@ -858,30 +757,36 @@ create policy leaves_owner_all on public.leave_requests
   with check (public.can_manage_business(business_id));
 
 create policy leaves_self_select on public.leave_requests
-  for select to authenticated
-  using (public.is_self_employee(employee_id));
+  for select to authenticated using (public.is_self_employee(employee_id));
 
 create policy leaves_self_insert on public.leave_requests
   for insert to authenticated
   with check (public.is_self_employee(employee_id) and status = 'pending');
 
--- 7.8 notes ----------------------------------------------------------------
+create policy leaves_self_update on public.leave_requests
+  for update to authenticated
+  using (public.is_self_employee(employee_id) and status = 'pending')
+  with check (public.is_self_employee(employee_id) and status in ('pending', 'rejected'));
+
+create policy leaves_self_delete on public.leave_requests
+  for delete to authenticated
+  using (public.is_self_employee(employee_id) and status = 'pending');
+
 drop policy if exists notes_owner_all on public.notes;
 create policy notes_owner_all on public.notes
   for all to authenticated
   using (public.can_manage_business(business_id))
   with check (public.can_manage_business(business_id));
 
--- 7.9 activity_log ---------------------------------------------------------
 drop policy if exists activity_owner_all on public.activity_log;
 create policy activity_owner_all on public.activity_log
   for all to authenticated
   using (public.can_manage_business(business_id))
   with check (public.can_manage_business(business_id));
 
--- ============================================================================
---  8. HÜQUQLAR (GRANTS)
--- ============================================================================
+-- ---------------------------------------------------------------------------
+--  9. Hüquqlar
+-- ---------------------------------------------------------------------------
 revoke all on table public.profiles         from anon;
 revoke all on table public.businesses       from anon;
 revoke all on table public.business_members from anon;
@@ -904,17 +809,3 @@ grant select, insert, update, delete on table public.activity_log     to authent
 
 revoke all on table public.v_employee_balances from anon;
 grant select on table public.v_employee_balances to authenticated;
-
--- ============================================================================
---  9. YOXLAMA (istəyə bağlı)
--- ============================================================================
--- select * from pg_policies where schemaname = 'public' order by tablename, policyname;
--- select id, name, join_code, owner_id from public.businesses;
--- select id, full_name, access_code, user_id from public.employees;
-
--- ============================================================================
---  SXEM HAZIR ✔
---  Növbəti addım: Supabase → Authentication → Providers → Email aktiv olsun.
---  Tövsiyə: "Confirm email" SÖNDÜRÜLSÜN ki, işçilər dərhal daxil ola bilsin.
---  (İşçi qoşulması artıq e-poçt təsdiqindən ASILI DEYİL — giriş kodu ilə işləyir.)
--- ============================================================================
