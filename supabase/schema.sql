@@ -1,8 +1,6 @@
 -- ============================================================================
 --  RahatHesab — tam baza sxemi (tək fayl)
 --  ---------------------------------------------------------------------------
---  İstifadə: Supabase → SQL Editor → bu faylın HAMISINI yapışdırın → Run.
---  Skript idempotentdir: təkrar işə salmaq təhlükəsizdir.
 -- ============================================================================
 
 create extension if not exists pgcrypto;
