@@ -1129,3 +1129,126 @@ export function openBulkPayModal({ rows, currency = 'AZN', period = currentPerio
     }
   });
 }
+
+/**
+ * Hesablaşma vərəqəsi (расчетный листок) — işçi üzrə aylıq detallı çap forması.
+ * Excel/1C-dəki «расчетный листок» məntiqinin sadələşdirilmiş variantı.
+ */
+export function openPayslipModal({ employee, payments = [], balances = [], currency = 'AZN', period, business = null }) {
+  const rows = (payments || []).filter(
+    (p) => p.employee_id === employee.id && (p.period || String(p.paid_at || '').slice(0, 7)) === period
+  );
+
+  const balance = (balances || []).find((b) => b.id === employee.id) || {};
+  const salary = Number(employee.monthly_salary || 0);
+
+  const sum = (kind) => rows.filter((p) => p.kind === kind).reduce((s, p) => s + Number(p.amount || 0), 0);
+  const advance = sum('advance');
+  const salaryPaid = sum('salary');
+  const bonus = sum('bonus');
+  const deduction = sum('deduction');
+  const netPaid = advance + salaryPaid + bonus - deduction;
+  const remaining = Math.max(0, salary - (advance + salaryPaid + bonus));
+
+  const periodLabel = monthLabel(period);
+
+  openModal({
+    title: 'Hesablaşma vərəqəsi',
+    subtitle: `${employee.full_name || 'İşçi'} · ${periodLabel}`,
+    wide: true,
+    body: `
+      <div class="payslip" id="payslip-print">
+        <div class="payslip__head">
+          <div>
+            <h2 class="payslip__title">${escapeHtml(business?.name || 'Biznes')}</h2>
+            <p class="payslip__meta">${escapeHtml(business?.legal_name || '')}${business?.address ? ' · ' + escapeHtml(business.address) : ''}</p>
+          </div>
+          <div style="text-align:right">
+            <div class="badge badge--ok">Hesablaşma vərəqəsi</div>
+            <p class="payslip__meta">${escapeHtml(periodLabel)}</p>
+          </div>
+        </div>
+
+        <dl class="kv" style="margin-top:14px">
+          <div class="kv__row"><dt>İşçi</dt><dd>${escapeHtml(employee.full_name || '—')}</dd></div>
+          <div class="kv__row"><dt>Vəzifə</dt><dd>${escapeHtml(employee.position || '—')}</dd></div>
+          <div class="kv__row"><dt>İşə qəbul</dt><dd>${dateShort(employee.hire_date)}</dd></div>
+          <div class="kv__row"><dt>Aylıq maaş</dt><dd>${money(salary, currency)}</dd></div>
+        </dl>
+
+        <h3 style="font-size:12.5px;font-weight:700;margin:16px 0 7px">Hesablanmalar və ödənişlər</h3>
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr><th>Tarix</th><th>Növ</th><th>Üsul</th><th>Qeyd</th><th class="num">Məbləğ</th></tr>
+            </thead>
+            <tbody>
+              ${rows.length
+                ? rows
+                    .map(
+                      (p) => `
+                    <tr>
+                      <td class="nowrap" data-label="Tarix">${dateShort(p.paid_at)}</td>
+                      <td data-label="Növ">${escapeHtml(KIND_LABELS[p.kind] || p.kind)}</td>
+                      <td data-label="Üsul">${escapeHtml(METHOD_LABELS[p.method] || '—')}</td>
+                      <td data-label="Qeyd">${escapeHtml(p.note || '—')}</td>
+                      <td class="num" data-label="Məbləğ" style="${p.kind === 'deduction' ? 'color:var(--danger)' : ''}">
+                        ${p.kind === 'deduction' ? '−' : ''}${money(p.amount, currency)}
+                      </td>
+                    </tr>
+                  `
+                    )
+                    .join('')
+                : '<tr><td colspan="5" style="text-align:center;padding:18px">Bu ay üzrə ödəniş qeydə alınmayıb.</td></tr>'}
+            </tbody>
+            <tfoot>
+              <tr><td colspan="4">Avans</td><td class="num">${money(advance, currency)}</td></tr>
+              <tr><td colspan="4">Maaş ödənişi</td><td class="num">${money(salaryPaid, currency)}</td></tr>
+              <tr><td colspan="4">Mükafat</td><td class="num">${money(bonus, currency)}</td></tr>
+              <tr><td colspan="4">Tutulma</td><td class="num" style="color:var(--danger)">−${money(deduction, currency)}</td></tr>
+              <tr><td colspan="4">Cəmi ödənilib</td><td class="num">${money(netPaid, currency)}</td></tr>
+              <tr><td colspan="4">Bu ay qalıq</td><td class="num" style="${remaining > 0.5 ? 'color:var(--danger)' : ''}">${money(remaining, currency)}</td></tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <div class="banner" style="margin-top:14px">
+          ${icon('i-info', 16)}
+          <span>
+            <strong>Ümumi qalıq borc: ${money(Math.max(0, Number(balance.balance || 0)), currency)}</strong>
+            Hesablanmış ${money(Number(balance.accrued_total || 0), currency)} · Ödənilmiş ${money(Number(balance.total_paid || 0), currency)}
+          </span>
+        </div>
+
+        <p class="tiny muted" style="margin-top:14px;line-height:1.6">
+          Sənəd ${dateShort(todayISO())} tarixində RahatHesab tərəfindən yaradılıb.
+        </p>
+      </div>
+    `,
+    footer: `
+      <button class="btn btn--ghost" type="button" data-modal-close>Bağla</button>
+      <button class="btn btn--ghost btn--sm" type="button" id="payslip-copy">${icon('i-copy', 13)} Kopyala</button>
+      <button class="btn btn--primary" type="button" id="payslip-print-btn">${icon('i-print', 14)} Çap et</button>
+    `,
+    onMount: (modal) => {
+      modal.querySelector('#payslip-print-btn')?.addEventListener('click', () => window.print());
+
+      modal.querySelector('#payslip-copy')?.addEventListener('click', async () => {
+        const lines = [
+          `${business?.name || 'Biznes'} — hesablaşma vərəqəsi (${periodLabel})`,
+          `İşçi: ${employee.full_name}`,
+          `Vəzifə: ${employee.position || '—'}`,
+          `Aylıq maaş: ${salary.toFixed(2)}`,
+          '',
+          'Tarix\tNöv\tÜsul\tMəbləğ'
+        ];
+        for (const p of rows) {
+          lines.push(`${p.paid_at}\t${KIND_LABELS[p.kind] || p.kind}\t${METHOD_LABELS[p.method] || ''}\t${Number(p.amount).toFixed(2)}`);
+        }
+        lines.push('', `Cəmi ödənilib: ${netPaid.toFixed(2)}`, `Bu ay qalıq: ${remaining.toFixed(2)}`);
+        const ok = await copyText(lines.join('\n'));
+        toast(ok ? 'Vərəqə kopyalandı — Excel-ə yapışdıra bilərsiniz.' : 'Kopyalamaq mümkün olmadı.', ok ? 'ok' : 'error', 3600);
+      });
+    }
+  });
+}

@@ -165,9 +165,18 @@ async function main() {
   log(`config.js yaradıldı (ref: ${urlRef})`);
 
   const errors = [];
-  const html = await readFile(path.join(DIST, 'index.html'), 'utf8');
+  let html = await readFile(path.join(DIST, 'index.html'), 'utf8');
+
+  // Supabase mənbəyinə əvvəlcədən qoşulma — ilk sorğunun gecikməsini azaldır.
+  const preconnect = [
+    `<link rel="preconnect" href="${url}" crossorigin />`,
+    `  <link rel="dns-prefetch" href="${url}" />`
+  ].join('\n  ');
+  html = html.replace('<!--SUPABASE_PRECONNECT-->', preconnect);
+  await writeFile(path.join(DIST, 'index.html'), html, 'utf8');
 
   if (/<script[^>]+src="https?:\/\//i.test(html)) errors.push('index.html xarici script yükləyir.');
+  if (html.includes('SUPABASE_PRECONNECT')) errors.push('index.html preconnect yer tutucusu doldurulmayıb.');
   for (const ref of REQUIRED_HTML_REFS) {
     if (!html.includes(ref)) errors.push(`index.html daxilində istinad yoxdur: ${ref}`);
     if (!(await exists(path.join(DIST, ref)))) errors.push(`Build nəticəsində fayl yoxdur: ${ref}`);

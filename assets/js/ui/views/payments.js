@@ -111,7 +111,7 @@ function renderOwnerPayments(root, ctx) {
               <tbody>
                 ${filtered.map((p) => `
                   <tr>
-                    <td class="nowrap">${dateShort(p.paid_at)}</td>
+                    <td class="nowrap" data-label="Tarix">${dateShort(p.paid_at)}</td>
                     <td>
                       <div class="cell-name">
                         <span>
@@ -125,8 +125,8 @@ function renderOwnerPayments(root, ctx) {
                         ${escapeHtml(KIND_LABELS[p.kind] || p.kind)}
                       </span>
                     </td>
-                    <td class="tiny muted">${escapeHtml(METHOD_LABELS[p.method] || '—')}</td>
-                    <td class="num" style="${p.kind === 'deduction' ? 'color:var(--danger)' : ''};font-weight:600">
+                    <td class="tiny muted" data-label="Üsul">${escapeHtml(METHOD_LABELS[p.method] || '—')}</td>
+                    <td class="num" data-label="Məbləğ" style="${p.kind === 'deduction' ? 'color:var(--danger)' : ''};font-weight:600">
                       ${p.kind === 'deduction' ? '−' : ''}${money(p.amount, currency)}
                     </td>
                     <td>

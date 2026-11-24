@@ -17,7 +17,7 @@ import {
   friendlyError
 } from './lib/store.js';
 import { initAuth, showAuth } from './auth.js';
-import { openBusinessForm, openPaymentForm, openJoinCodeModal } from './ui/forms.js';
+import { openBusinessForm, openPaymentForm, openJoinCodeModal, openEmployeeForm, openWorkLogForm, openLeaveForm, openNoteForm } from './ui/forms.js';
 import { openPalette } from './ui/palette.js';
 
 import renderDashboard from './ui/views/dashboard.js';
@@ -31,6 +31,11 @@ import renderReports from './ui/views/reports.js';
 import renderSettings from './ui/views/settings.js';
 import renderProfile from './ui/views/profile.js';
 import renderHelp from './ui/views/help.js';
+import renderJournal from './ui/views/journal.js';
+import renderNotifications, {
+  renderNotificationsPopover,
+  updateNotificationBadges
+} from './ui/views/notifications.js';
 
 export const state = {
   session: null,
@@ -47,14 +52,19 @@ export const state = {
   leaves: [],
   notes: [],
   activity: [],
-  summary: null
+  summary: null,
+  loadedAt: null,
+  fromCache: false
 };
 
 const STORE_KEY = 'rahathesab.biz';
 const THEME_KEY = 'rahathesab.theme';
+const VIEW_KEY = 'rahathesab.view';
+const CACHE_PREFIX = 'rahathesab.cache.v2.';
 
 const VIEWS = {
   dashboard: { title: 'İcmal', subtitle: 'Biznesin qısa mənzərəsi', render: renderDashboard, roles: ['owner', 'employee'] },
+  notifications: { title: 'Bildirişlər', subtitle: 'Diqqət tələb edən hadisələr', render: renderNotifications, roles: ['owner', 'employee'] },
   employees: { title: 'İşçilər', subtitle: 'Heyət və maaşlar', render: renderEmployees, roles: ['owner'] },
   'employee-detail': { title: 'İşçi kartı', subtitle: 'Hesablaşma və tarixçə', render: renderEmployeeDetail, roles: ['owner'] },
   payroll: { title: 'Əməkhaqqı cədvəli', subtitle: 'Aylıq hesablaşma', render: renderPayroll, roles: ['owner'] },
@@ -63,6 +73,7 @@ const VIEWS = {
   leaves: { title: 'Məzuniyyət', subtitle: 'İstəklər və qərarlar', render: renderLeaves, roles: ['owner', 'employee'] },
   notes: { title: 'Qeydlər', subtitle: 'Tapşırıqlar və xatırlatmalar', render: renderNotes, roles: ['owner'] },
   reports: { title: 'Hesabatlar', subtitle: 'Aylıq dinamika və yekunlar', render: renderReports, roles: ['owner'] },
+  journal: { title: 'Jurnal', subtitle: 'Bütün əməliyyatlar xronologiyada', render: renderJournal, roles: ['owner'] },
   settings: { title: 'Tənzimləmələr', subtitle: 'Biznes profili və hesab', render: renderSettings, roles: ['owner'] },
   profile: { title: 'Şəxsi kabinet', subtitle: 'Maaş, ödənişlər və qalıq', render: renderProfile, roles: ['owner', 'employee'] },
   help: { title: 'Kömək', subtitle: 'Qısa izahlar', render: renderHelp, roles: ['owner', 'employee'] }
@@ -106,6 +117,24 @@ export async function boot() {
     }
   });
 
+  window.addEventListener('online', () => {
+    syncSet('ok', 'Onlayn');
+    if (!$('#app-shell').hidden) refreshAndRender({ silent: true });
+  });
+  window.addEventListener('offline', () => {
+    syncSet('offline', 'Oflayn');
+  });
+
+  let lastFocusRefresh = 0;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if ($('#app-shell').hidden || !activeSpace()) return;
+    const now = Date.now();
+    if (now - lastFocusRefresh < 45000) return;
+    lastFocusRefresh = now;
+    refreshAndRender({ silent: true });
+  });
+
   try {
     const session = await getSession();
     if (session) await startApp(session);
@@ -128,27 +157,226 @@ function showFatal(error) {
   if (retry) retry.onclick = () => window.location.reload();
 }
 
-export async function startApp(session) {
-  try {
-    state.session = session;
-    state.user = session.user;
+/* ---------------------------------------------------------------- yaddaş */
 
+function readStored(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(key, value) {
+  try {
+    if (value === null || value === undefined) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch {
+    /* yaddaş bağlıdır */
+  }
+}
+
+function readJSON(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const value = JSON.parse(raw);
+    return value && typeof value === 'object' ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function contextCacheKey(userId) {
+  return `rahathesab.ctx.v1.${userId || 'anon'}`;
+}
+
+function snapshotCacheKey(businessId) {
+  return `${CACHE_PREFIX}${businessId || 'none'}`;
+}
+
+function saveContextCache() {
+  if (!state.user?.id) return;
+  try {
+    localStorage.setItem(
+      contextCacheKey(state.user.id),
+      JSON.stringify({
+        at: Date.now(),
+        profile: state.profile,
+        spaces: state.spaces
+      })
+    );
+  } catch {
+    /* yaddaş bağlıdır */
+  }
+}
+
+function readContextCache(userId) {
+  const cached = readJSON(contextCacheKey(userId));
+  if (!cached || !Array.isArray(cached.spaces) || !cached.spaces.length) return null;
+  const valid = cached.spaces.every((s) => s && s.business && s.business.id);
+  return valid ? cached : null;
+}
+
+function snapshotOf() {
+  return {
+    at: Date.now(),
+    employees: state.employees.slice(0, 300),
+    balances: state.balances.slice(0, 300),
+    payments: state.payments.slice(0, 220),
+    worklogs: state.worklogs.slice(0, 220),
+    leaves: state.leaves.slice(0, 120),
+    notes: state.notes.slice(0, 160),
+    activity: state.activity.slice(0, 12)
+  };
+}
+
+function saveSnapshot() {
+  const space = activeSpace();
+  if (!space) return;
+  try {
+    localStorage.setItem(snapshotCacheKey(space.business.id), JSON.stringify(snapshotOf()));
+  } catch {
+    /* yaddaş dolub — keş olmadan davam edirik */
+  }
+}
+
+function applySnapshot(snap) {
+  state.employees = Array.isArray(snap.employees) ? snap.employees : [];
+  state.balances = Array.isArray(snap.balances) ? snap.balances : [];
+  state.payments = Array.isArray(snap.payments) ? snap.payments : [];
+  state.worklogs = Array.isArray(snap.worklogs) ? snap.worklogs : [];
+  state.leaves = Array.isArray(snap.leaves) ? snap.leaves : [];
+  state.notes = Array.isArray(snap.notes) ? snap.notes : [];
+  state.activity = Array.isArray(snap.activity) ? snap.activity : [];
+
+  if (currentRole() === 'employee') {
+    const employee = state.spaces[state.activeIndex]?.employee;
+    const ownCards = employee ? [{ id: employee.id, is_active: true, monthly_salary: employee.monthly_salary }] : [];
+    state.summary = summarize(state.balances, ownCards);
+  } else {
+    state.summary = summarize(state.balances, state.employees);
+  }
+
+  state.loadedAt = snap.at || null;
+  state.fromCache = true;
+}
+
+function dropSnapshot(businessId) {
+  try {
+    localStorage.removeItem(snapshotCacheKey(businessId));
+  } catch {
+    /* yaddaş bağlıdır */
+  }
+}
+
+/* ------------------------------------------------------------ sinxron chip */
+
+function syncSet(mode, text) {
+  const chip = $('#sync-chip');
+  const label = $('#sync-text');
+  if (!chip) return;
+  chip.dataset.state = mode;
+  if (label) label.textContent = text;
+  chip.title = text;
+}
+
+function syncIdle() {
+  if (!navigator.onLine) return syncSet('offline', 'Oflayn');
+  syncSet('ok', 'Hazır');
+}
+
+/* ------------------------------------------------------------------ start */
+
+function safeInitialView() {
+  const stored = readStored(VIEW_KEY);
+  const view = stored && VIEWS[stored] ? stored : 'dashboard';
+  if (view === 'employee-detail') return 'employees';
+  return VIEWS[view].roles.includes(currentRole()) ? view : 'dashboard';
+}
+
+export async function startApp(session) {
+  state.session = session;
+  state.user = session.user;
+
+  const cachedContext = readContextCache(session.user.id);
+  let paintedFromCache = false;
+
+  if (cachedContext) {
+    try {
+      state.profile = cachedContext.profile || null;
+      state.spaces = cachedContext.spaces;
+      const savedId = readStored(STORE_KEY);
+      const idx = savedId ? state.spaces.findIndex((s) => s.business.id === savedId) : -1;
+      state.activeIndex = idx >= 0 ? idx : 0;
+
+      const space = activeSpace();
+      const snap = space ? readJSON(snapshotCacheKey(space.business.id)) : null;
+      if (snap) applySnapshot(snap);
+
+      state.view = safeInitialView();
+      showApp();
+      if (snap) navigate(state.view);
+      else renderSkeleton();
+      paintedFromCache = true;
+    } catch {
+      paintedFromCache = false;
+    }
+  }
+
+  if (!paintedFromCache) syncSet('loading', 'Yüklənir');
+
+  try {
     await buildSpaces();
 
     if (!state.spaces.length) {
       showApp();
       renderWelcome();
+      syncIdle();
       return;
     }
 
-    await refreshData();
+    if (!paintedFromCache) {
+      state.view = safeInitialView();
+      showApp();
+      renderSkeleton();
+    } else {
+      applyRoleVisibility();
+    }
+
+    if (!paintedFromCache) syncSet('loading', 'Yüklənir');
+    await refreshData({ silent: paintedFromCache });
     showApp();
     navigate(VIEWS[state.view] ? state.view : 'dashboard');
+    syncIdle();
   } catch (err) {
+    if (paintedFromCache) {
+      syncSet('error', 'Yenilənmədi');
+      toast('Məlumatlar yenilənmədi. İnternet bağlantısını yoxlayın.', 'error', 5000);
+      return;
+    }
+    if (state.session) {
+      showFatal(err);
+      return;
+    }
     resetState();
     showAuth();
     toast(friendlyError(err), 'error', 6000);
   }
+}
+
+function renderSkeleton() {
+  const root = $('#view-root');
+  if (!root) return;
+  const card = '<div class="skel-card"></div>';
+  root.innerHTML = `
+    <div class="skel" aria-busy="true" aria-label="Yüklənir">
+      <div class="skel-hero"></div>
+      <div class="skel-stats">${card}${card}${card}${card}</div>
+      <div class="skel-main"><div class="skel-card skel-card--tall"></div><div class="skel-card skel-card--tall"></div></div>
+      <p class="skel__text">Məlumatlar yüklənir…</p>
+    </div>
+  `;
 }
 
 async function buildSpaces() {
@@ -172,16 +400,12 @@ async function buildSpaces() {
     }
   }
 
-  let savedId = null;
-  try {
-    savedId = localStorage.getItem(STORE_KEY);
-  } catch {
-    savedId = null;
-  }
+  const savedId = readStored(STORE_KEY);
   const idx = savedId ? spaces.findIndex((s) => s.business.id === savedId) : -1;
   state.activeIndex = idx >= 0 ? idx : 0;
 
   rememberActive();
+  saveContextCache();
 }
 
 function rememberActive() {
@@ -210,6 +434,8 @@ export function resetState() {
   state.notes = [];
   state.activity = [];
   state.summary = null;
+  state.loadedAt = null;
+  state.fromCache = false;
 }
 
 function showApp() {
@@ -217,6 +443,7 @@ function showApp() {
   $('#fatal-screen').hidden = true;
   $('#auth-screen').hidden = true;
   $('#app-shell').hidden = false;
+  document.title = 'RahatHesab — Əməkhaqqı və işçi ucotu';
 
   const user = state.user;
   const name =
@@ -229,6 +456,7 @@ function showApp() {
   renderSpaceHeader();
   applyRoleVisibility();
   bindShell();
+  updateNotificationBadges(viewContext());
 }
 
 function setText(selector, value) {
@@ -296,12 +524,23 @@ function bindShell() {
     });
   });
 
-  $('#quick-add')?.addEventListener('click', () => {
+  $('#quick-add')?.addEventListener('click', (e) => {
+    e.stopPropagation();
     if (currentRole() !== 'owner') return;
-    openPaymentForm({ employees: state.employees, payments: state.payments, currency: currencyOf(), onSaved: refreshAndRender });
+    toggleQuickAdd();
+  });
+
+  $('#notif-open')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openNotifPopover();
   });
 
   $('#search-open')?.addEventListener('click', () => openPalette(state, navigate));
+
+  document.addEventListener('click', (e) => {
+    const quickMenu = $('#quickadd-menu');
+    if (quickMenu && !quickMenu.hidden && !e.target.closest('#quickadd')) closeQuickAdd();
+  });
 
   $('#logout-btn')?.addEventListener('click', async () => {
     try {
@@ -480,6 +719,7 @@ export function navigate(view, params = {}) {
   state.view = view;
   state.params = params || {};
   const seq = ++navSeq;
+  writeStored(VIEW_KEY, view);
 
   $$('#main-nav .nav__item').forEach((btn) => {
     const active = btn.dataset.view === view;
@@ -500,7 +740,27 @@ export function rerender(seq = navSeq) {
   const cfg = VIEWS[state.view];
   if (!root || !cfg) return;
 
-  const ctx = {
+  const ctx = viewContext();
+
+  try {
+    cfg.render(root, ctx);
+  } catch (err) {
+    root.innerHTML = emptyState({
+      title: 'Bölmə yüklənmədi',
+      message: friendlyError(err),
+      iconName: 'i-alert',
+      action: '<button class="btn btn--primary" type="button" id="render-retry">Yenidən cəhd et</button>'
+    });
+    $('#render-retry', root)?.addEventListener('click', () => rerender(seq));
+  }
+}
+
+export function currencyOf() {
+  return currentBusiness()?.currency || 'AZN';
+}
+
+export function viewContext() {
+  return {
     state,
     role: currentRole(),
     business: currentBusiness(),
@@ -520,44 +780,38 @@ export function rerender(seq = navSeq) {
     refresh: refreshAndRender,
     reloadSpaces
   };
+}
 
+export async function refreshAndRender(options = {}) {
+  const silent = options.silent === true;
+  if (!silent) syncSet('loading', 'Yenilənir');
   try {
-    cfg.render(root, ctx);
+    await refreshData({ silent });
+    rerender();
+    if (!silent) syncIdle();
   } catch (err) {
-    root.innerHTML = emptyState({
-      title: 'Bölmə yüklənmədi',
-      message: friendlyError(err),
-      iconName: 'i-alert',
-      action: '<button class="btn btn--primary" type="button" id="render-retry">Yenidən cəhd et</button>'
-    });
-    $('#render-retry', root)?.addEventListener('click', () => rerender(seq));
+    syncSet('error', 'Yenilənmədi');
+    if (!silent) toast(friendlyError(err), 'error', 5000);
+    throw err;
   }
 }
 
-export function currencyOf() {
-  return currentBusiness()?.currency || 'AZN';
-}
-
-export async function refreshAndRender() {
-  await refreshData();
-  rerender();
-}
-
-export async function refreshData() {
+export async function refreshData(options = {}) {
   const space = activeSpace();
   if (!space) return;
 
   const businessId = space.business.id;
+  if (!options.silent) syncSet('loading', 'Yüklənir');
 
   if (space.type === 'owner') {
     const [employees, balances, payments, worklogs, leaves, notes, activity] = await Promise.all([
       listEmployees(businessId),
       listBalances(businessId),
-      listPayments({ businessId, limit: 500 }),
-      listWorkLogs({ businessId, limit: 500 }),
-      listLeaves({ businessId, limit: 200 }),
+      listPayments({ businessId, limit: 400 }),
+      listWorkLogs({ businessId, limit: 400 }),
+      listLeaves({ businessId, limit: 150 }),
       listNotes(businessId),
-      listActivity(businessId, 10)
+      listActivity(businessId, 12)
     ]);
     state.employees = employees;
     state.balances = balances;
@@ -589,7 +843,12 @@ export async function refreshData() {
     state.summary = summarize(state.balances, ownCards);
   }
 
+  state.loadedAt = Date.now();
+  state.fromCache = false;
+
   updateBadges();
+  saveSnapshot();
+  syncIdle();
 }
 
 function updateBadges() {
@@ -609,10 +868,131 @@ function updateBadges() {
 
   setText('#nav-payments-label', currentRole() === 'employee' ? 'Maaşım' : 'Ödənişlər');
   setText('#nav-worklog-label', currentRole() === 'employee' ? 'İş saatlarım' : 'Davamiyyət');
+
+  updateNotificationBadges(viewContext());
+}
+
+/* -------------------------------------------------------- quick add menu */
+
+const QUICK_ACTIONS = [
+  { id: 'payment', icon: 'i-wallet', label: 'Ödəniş qeyd et' },
+  { id: 'employee', icon: 'i-user-plus', label: 'Yeni işçi' },
+  { id: 'worklog', icon: 'i-clock-plus', label: 'Davamiyyət qeyd et' },
+  { id: 'leave', icon: 'i-calendar', label: 'Məzuniyyət istəyi' },
+  { id: 'note', icon: 'i-note', label: 'Yeni qeyd' },
+  { id: 'business', icon: 'i-building', label: 'Yeni biznes' },
+  { id: 'join', icon: 'i-key', label: 'Kodla qoşul' },
+  { id: 'backup', icon: 'i-download', label: 'Ehtiyat nüsxə' }
+];
+
+function closeQuickAdd() {
+  const menu = $('#quickadd-menu');
+  const btn = $('#quick-add');
+  if (menu) menu.hidden = true;
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+function toggleQuickAdd() {
+  const menu = $('#quickadd-menu');
+  const btn = $('#quick-add');
+  if (!menu || !btn) return;
+  if (!menu.hidden) return closeQuickAdd();
+
+  const businessId = currentBusiness()?.id;
+  menu.innerHTML = QUICK_ACTIONS.map(
+    (a) => `<button type="button" role="menuitem" data-quick="${a.id}">${icon(a.icon, 15)}<span>${a.label}</span></button>`
+  ).join('');
+
+  menu.hidden = false;
+  btn.setAttribute('aria-expanded', 'true');
+
+  menu.querySelectorAll('[data-quick]').forEach((item) => {
+    item.addEventListener('click', () => {
+      const action = item.dataset.quick;
+      closeQuickAdd();
+      runQuickAction(action, businessId);
+    });
+  });
+}
+
+function runQuickAction(action, businessId) {
+  const common = { onSaved: refreshAndRender };
+  switch (action) {
+    case 'payment':
+      openPaymentForm({ employees: state.employees, payments: state.payments, currency: currencyOf(), onSaved: refreshAndRender });
+      break;
+    case 'employee':
+      openEmployeeForm({ businessId, currency: currencyOf(), onSaved: refreshAndRender });
+      break;
+    case 'worklog':
+      openWorkLogForm({ employees: state.employees, onSaved: refreshAndRender });
+      break;
+    case 'leave':
+      openLeaveForm({ employees: state.employees, onSaved: refreshAndRender });
+      break;
+    case 'note':
+      openNoteForm({ businessId, onSaved: refreshAndRender });
+      break;
+    case 'business':
+      openBusinessForm({ onSaved: reloadSpaces });
+      break;
+    case 'join':
+      openJoinCodeModal({ onDone: reloadSpaces });
+      break;
+    case 'backup':
+      import('./ui/backup.js').then((m) => m.exportBackup(viewContext()));
+      break;
+    default:
+      break;
+  }
+  void common;
+}
+
+/* ------------------------------------------------------- notification pop */
+
+let notifPopBound = false;
+
+function closeNotifPopover() {
+  const pop = $('#notif-pop');
+  if (!pop) return;
+  pop.hidden = true;
+  document.body.style.overflow = '';
+}
+
+function openNotifPopover() {
+  let pop = $('#notif-pop');
+  if (!pop) {
+    pop = document.createElement('div');
+    pop.id = 'notif-pop';
+    pop.className = 'notifpop';
+    pop.hidden = true;
+    pop.innerHTML = '<div class="notifpop__panel" role="dialog" aria-modal="true" aria-label="Bildirişlər"></div>';
+    document.body.appendChild(pop);
+  }
+
+  const panel = pop.querySelector('.notifpop__panel');
+  renderNotificationsPopover(panel, viewContext(), (view) => {
+    closeNotifPopover();
+    navigate(view);
+  });
+
+  pop.hidden = false;
+  document.body.style.overflow = 'hidden';
+
+  if (!notifPopBound) {
+    notifPopBound = true;
+    pop.addEventListener('mousedown', (e) => {
+      if (e.target === pop) closeNotifPopover();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !pop.hidden) closeNotifPopover();
+    });
+  }
 }
 
 function renderWelcome() {
-  $('#quick-add').hidden = true;
+  const quick = $('#quickadd');
+  if (quick) quick.hidden = true;
   setText('#page-title', 'Başlayaq');
   setText('#page-subtitle', 'Bir seçim edin');
 

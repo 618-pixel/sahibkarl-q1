@@ -11,6 +11,7 @@
   <link rel="icon" href="assets/img/favicon-64.png" sizes="64x64" type="image/png" />
   <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png" />
   <link rel="manifest" href="manifest.webmanifest" />
+  <!--SUPABASE_PRECONNECT-->
   <link rel="stylesheet" href="assets/css/styles.css" />
 </head>
 <body>
@@ -191,27 +192,65 @@
 
       <nav class="nav" id="main-nav">
         <p class="nav__label">Əsas</p>
-        <button type="button" class="nav__item" data-view="dashboard"><span>İcmal</span></button>
-        <button type="button" class="nav__item" data-view="employees" data-roles="owner">
-          <span>İşçilər</span>
-          <span class="nav__badge" id="nav-employees-badge" hidden>0</span>
+        <button type="button" class="nav__item" data-view="dashboard">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><use href="#i-grid"></use></svg>
+          <span>İcmal</span>
         </button>
-        <button type="button" class="nav__item" data-view="payroll" data-roles="owner"><span>Əməkhaqqı cədvəli</span></button>
-        <button type="button" class="nav__item" data-view="payments"><span id="nav-payments-label">Ödənişlər</span></button>
-        <button type="button" class="nav__item" data-view="worklog"><span id="nav-worklog-label">Davamiyyət</span></button>
+        <button type="button" class="nav__item" data-view="notifications">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><use href="#i-bell"></use></svg>
+          <span>Bildirişlər</span>
+          <span class="nav__badge" id="nav-notif-badge" hidden>0</span>
+        </button>
+        <button type="button" class="nav__item" data-view="employees" data-roles="owner">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><use href="#i-users"></use></svg>
+          <span>İşçilər</span>
+          <span class="nav__badge nav__badge--soft" id="nav-employees-badge" hidden>0</span>
+        </button>
+        <button type="button" class="nav__item" data-view="payroll" data-roles="owner">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><use href="#i-banknote"></use></svg>
+          <span>Əməkhaqqı cədvəli</span>
+        </button>
+        <button type="button" class="nav__item" data-view="payments">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><use href="#i-wallet"></use></svg>
+          <span id="nav-payments-label">Ödənişlər</span>
+        </button>
+        <button type="button" class="nav__item" data-view="worklog">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><use href="#i-clock"></use></svg>
+          <span id="nav-worklog-label">Davamiyyət</span>
+        </button>
         <button type="button" class="nav__item" data-view="leaves">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><use href="#i-calendar"></use></svg>
           <span>Məzuniyyət</span>
           <span class="nav__badge nav__badge--soft" id="nav-leaves-badge" hidden>0</span>
         </button>
-        <button type="button" class="nav__item" data-view="notes" data-roles="owner"><span>Qeydlər</span></button>
+        <button type="button" class="nav__item" data-view="notes" data-roles="owner">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><use href="#i-note"></use></svg>
+          <span>Qeydlər</span>
+        </button>
 
         <p class="nav__label" data-roles="owner">Analiz</p>
-        <button type="button" class="nav__item" data-view="reports" data-roles="owner"><span>Hesabatlar</span></button>
+        <button type="button" class="nav__item" data-view="reports" data-roles="owner">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><use href="#i-chart"></use></svg>
+          <span>Hesabatlar</span>
+        </button>
+        <button type="button" class="nav__item" data-view="journal" data-roles="owner">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><use href="#i-list"></use></svg>
+          <span>Jurnal</span>
+        </button>
 
         <p class="nav__label">Hesab</p>
-        <button type="button" class="nav__item" data-view="profile"><span>Şəxsi kabinet</span></button>
-        <button type="button" class="nav__item" data-view="settings" data-roles="owner"><span>Tənzimləmələr</span></button>
-        <button type="button" class="nav__item" data-view="help"><span>Kömək</span></button>
+        <button type="button" class="nav__item" data-view="profile">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><use href="#i-user"></use></svg>
+          <span>Şəxsi kabinet</span>
+        </button>
+        <button type="button" class="nav__item" data-view="settings" data-roles="owner">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><use href="#i-settings"></use></svg>
+          <span>Tənzimləmələr</span>
+        </button>
+        <button type="button" class="nav__item" data-view="help">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><use href="#i-help"></use></svg>
+          <span>Kömək</span>
+        </button>
       </nav>
 
       <div class="sidebar__foot">
@@ -234,15 +273,26 @@
           <p id="page-subtitle">Biznesin qısa mənzərəsi</p>
         </div>
         <div class="topbar__actions">
-          <button class="btn btn--ghost btn--sm topbar__search" type="button" id="search-open" aria-label="Axtarış">
+          <span class="syncchip" id="sync-chip" role="status" aria-live="polite" title="Məlumatların sinxronizasiyası">
+            <span class="syncchip__dot" aria-hidden="true"></span>
+            <span class="syncchip__text" id="sync-text">Hazır</span>
+          </span>
+          <button class="btn btn--ghost btn--sm topbar__search" type="button" id="search-open" aria-label="Axtarış (Ctrl+K)">
             <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><use href="#i-search"></use></svg>
             <span class="topbar__search-text">Axtar</span>
           </button>
-          <button class="iconbtn" type="button" id="theme-toggle" aria-label="Tema dəyişdir" title="Tema"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><use href="#i-moon"></use></svg></button>
-          <button class="btn btn--primary btn--sm" type="button" id="quick-add" data-roles="owner">
-            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><use href="#i-plus"></use></svg>
-            <span>Ödəniş</span>
+          <button class="iconbtn topbar__bell" type="button" id="notif-open" aria-label="Bildirişlər" title="Bildirişlər">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><use href="#i-bell"></use></svg>
+            <span class="topbar__bell-badge" id="topbar-notif-badge" hidden>0</span>
           </button>
+          <button class="iconbtn" type="button" id="theme-toggle" aria-label="Tema dəyişdir" title="Tema"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><use href="#i-moon"></use></svg></button>
+          <div class="quickadd" id="quickadd" data-roles="owner">
+            <button class="btn btn--primary btn--sm" type="button" id="quick-add" aria-haspopup="menu" aria-expanded="false">
+              <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><use href="#i-plus"></use></svg>
+              <span>Əlavə et</span>
+            </button>
+            <div class="quickadd__menu" id="quickadd-menu" role="menu" hidden></div>
+          </div>
         </div>
       </header>
 
@@ -311,6 +361,17 @@
       <symbol id="i-print" viewBox="0 0 24 24"><path d="M7.2 8.2V4.4h9.6v3.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><rect x="4" y="8.2" width="16" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M7.2 13.4h9.6v6.2H7.2z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
       <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4.2 6.2h15.6M7 12h10M10 17.8h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
       <symbol id="i-file" viewBox="0 0 24 24"><path d="M6.4 3.8h7.2l4 4v12.4H6.4z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M13.4 3.8v4.2h4.2M9.2 12.4h5.6M9.2 15.6h5.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+      <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6.4 9.6a5.6 5.6 0 0 1 11.2 0c0 4.1 1.5 5.4 1.5 5.4H4.9s1.5-1.3 1.5-5.4Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M10.1 18.2a2 2 0 0 0 3.8 0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+      <symbol id="i-list" viewBox="0 0 24 24"><path d="M8.4 7.2h11.2M8.4 12h11.2M8.4 16.8h11.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="4.7" cy="7.2" r="1.15" fill="currentColor"/><circle cx="4.7" cy="12" r="1.15" fill="currentColor"/><circle cx="4.7" cy="16.8" r="1.15" fill="currentColor"/></symbol>
+      <symbol id="i-check-all" viewBox="0 0 24 24"><path d="m2.8 12.6 3.3 3.3 6.3-6.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="m11 15.9 1.7 1.7 6.3-6.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-user-plus" viewBox="0 0 24 24"><circle cx="9.6" cy="8.4" r="3.6" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M3.4 20c0-3.2 2.8-5.5 6.2-5.5 1 0 2 .2 2.8.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M17.6 13.4v6M14.6 16.4h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+      <symbol id="i-clock-plus" viewBox="0 0 24 24"><circle cx="11" cy="12.6" r="7.4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M11 8.6v4l2.6 1.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M19.4 3.4v4.2M17.3 5.5h4.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+      <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3.4l1.9 5.1 5.1 1.9-5.1 1.9L12 17.4l-1.9-5.1L5 10.4l5.1-1.9L12 3.4Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M18.4 16.4l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z" fill="currentColor"/></symbol>
+      <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19V5.4M6.4 11 12 5.4 17.6 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="M12 5v13.6M17.6 12.6 12 18.6 6.4 12.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-sort" viewBox="0 0 24 24"><path d="M8.4 5.4v13.2M4.8 9 8.4 5.4 12 9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M15.6 18.6V5.4M12 15l3.6 3.6L19.2 15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-wifi-off" viewBox="0 0 24 24"><path d="m3 3 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M8.6 15.4a4.8 4.8 0 0 1 6.8 0M5 11.8a10.4 10.4 0 0 1 4-2.4M14.6 9.5a10.4 10.4 0 0 1 4.4 2.3M2 8.6a14.6 14.6 0 0 1 4.2-2.5M17.8 6.1a14.6 14.6 0 0 1 4.2 2.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="12" cy="18.6" r="1.15" fill="currentColor"/></symbol>
+      <symbol id="i-cash" viewBox="0 0 24 24"><rect x="2.8" y="6.8" width="18.4" height="10.4" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="2.4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M6 9.6v4.8M18 9.6v4.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
     </defs>
   </svg>
 

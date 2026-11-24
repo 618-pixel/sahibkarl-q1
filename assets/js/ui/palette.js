@@ -8,6 +8,7 @@ let navigator = null;
 
 const SECTIONS = [
   { view: 'dashboard', title: 'İcmal', roles: ['owner', 'employee'] },
+  { view: 'notifications', title: 'Bildirişlər', roles: ['owner', 'employee'] },
   { view: 'employees', title: 'İşçilər', roles: ['owner'] },
   { view: 'payroll', title: 'Əməkhaqqı cədvəli', roles: ['owner'] },
   { view: 'payments', title: 'Ödənişlər', roles: ['owner', 'employee'] },
@@ -15,6 +16,7 @@ const SECTIONS = [
   { view: 'leaves', title: 'Məzuniyyət', roles: ['owner', 'employee'] },
   { view: 'notes', title: 'Qeydlər', roles: ['owner'] },
   { view: 'reports', title: 'Hesabatlar', roles: ['owner'] },
+  { view: 'journal', title: 'Jurnal', roles: ['owner'] },
   { view: 'settings', title: 'Tənzimləmələr', roles: ['owner'] },
   { view: 'profile', title: 'Şəxsi kabinet', roles: ['owner', 'employee'] },
   { view: 'help', title: 'Kömək', roles: ['owner', 'employee'] }

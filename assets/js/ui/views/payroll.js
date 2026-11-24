@@ -1,6 +1,6 @@
 import { icon, emptyState, escapeHtml, downloadFile, toast } from '../../lib/dom.js';
 import { money, monthLabel, currentPeriod, lastPeriods, buildCsv } from '../../lib/format.js';
-import { openPaymentForm, openBulkPayModal } from '../forms.js';
+import { openPaymentForm, openBulkPayModal, openPayslipModal } from '../forms.js';
 
 let period = currentPeriod();
 
@@ -108,9 +108,9 @@ export default function renderPayroll(root, ctx) {
                         </span>
                       </div>
                     </td>
-                    <td class="num">${money(r.salary, currency)}</td>
-                    <td class="num">${money(r.paidThisMonth, currency)}</td>
-                    <td class="num" style="${r.remaining > 0.5 ? 'color:var(--danger);font-weight:700' : ''}">${money(r.remaining, currency)}</td>
+                    <td class="num" data-label="Maaş">${money(r.salary, currency)}</td>
+                    <td class="num" data-label="Ödənilib">${money(r.paidThisMonth, currency)}</td>
+                    <td class="num" data-label="Qalıq" style="${r.remaining > 0.5 ? 'color:var(--danger);font-weight:700' : ''}">${money(r.remaining, currency)}</td>
                     <td>
                       <span class="badge ${r.isPaid ? 'badge--ok' : r.paidThisMonth > 0 ? 'badge--warn' : ''}">
                         ${r.isPaid ? 'Ödənilib' : r.paidThisMonth > 0 ? 'Qismən' : 'Ödənilməyib'}
@@ -118,6 +118,7 @@ export default function renderPayroll(root, ctx) {
                     </td>
                     <td>
                       <div class="row-actions">
+                        <button class="iconbtn iconbtn--sm" type="button" title="Hesablaşma vərəqəsi" aria-label="Hesablaşma vərəqəsi" data-slip="${r.employee_id}">${icon('i-file', 14)}</button>
                         <button class="btn btn--ghost btn--sm" type="button" data-pay-row="${r.employee_id}">
                           ${icon('i-wallet', 13)} Ödə
                         </button>
@@ -129,9 +130,9 @@ export default function renderPayroll(root, ctx) {
               <tfoot>
                 <tr>
                   <td>Cəmi</td>
-                  <td class="num">${money(totals.salary, currency)}</td>
-                  <td class="num">${money(totals.paid, currency)}</td>
-                  <td class="num">${money(totals.remaining, currency)}</td>
+                  <td class="num" data-label="Maaş">${money(totals.salary, currency)}</td>
+                  <td class="num" data-label="Ödənilib">${money(totals.paid, currency)}</td>
+                  <td class="num" data-label="Qalıq">${money(totals.remaining, currency)}</td>
                   <td colspan="2"></td>
                 </tr>
               </tfoot>
@@ -182,6 +183,14 @@ export default function renderPayroll(root, ctx) {
         const amountInput = document.querySelector('#pay-amount');
         if (amountInput) amountInput.value = String(Math.round(row.remaining * 100) / 100);
       }
+    });
+  });
+
+  root.querySelectorAll('[data-slip]').forEach((b) => {
+    b.addEventListener('click', () => {
+      const emp = employees.find((x) => x.id === b.dataset.slip);
+      if (!emp) return;
+      openPayslipModal({ employee: emp, payments, balances, currency, period, business });
     });
   });
 

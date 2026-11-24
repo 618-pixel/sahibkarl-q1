@@ -108,10 +108,10 @@ function renderList(root, ctx) {
                           </span>
                         </div>
                       </td>
-                      <td class="num">${money(e.monthly_salary, currency)}</td>
-                      <td class="num">${money(b.total_paid || 0, currency)}</td>
-                      <td class="num" style="${balance > 0.5 ? 'color:var(--danger);font-weight:700' : 'color:var(--ink-3)'}">${money(balance, currency)}</td>
-                      <td>
+                      <td class="num" data-label="Maaş">${money(e.monthly_salary, currency)}</td>
+                      <td class="num" data-label="Ödənilib">${money(b.total_paid || 0, currency)}</td>
+                      <td class="num" data-label="Qalıq" style="${balance > 0.5 ? 'color:var(--danger);font-weight:700' : 'color:var(--ink-3)'}">${money(balance, currency)}</td>
+                      <td data-label="Kod">
                         <button class="badge ${e.user_id ? 'badge--ok' : 'badge--info'}" type="button"
                           data-copy-code="${escapeHtml(e.access_code || '')}" title="Kopyalamaq üçün klikləyin"
                           style="cursor:pointer;font-family:ui-monospace,monospace">
